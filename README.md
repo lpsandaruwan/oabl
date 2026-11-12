@@ -89,3 +89,7 @@ OABL has no analytics, account, or OABL backend. Preferences stay on the box. Go
 - Add optional theme packs and independent widget-layout choices.
 - Build a compatibility report for common AI box firmware families.
 - Add signed release builds, update metadata, license, and a public privacy policy.
+
+## License
+
+[MIT](LICENSE). Third-party libraries keep their own licences.
