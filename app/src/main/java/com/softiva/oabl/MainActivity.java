@@ -5885,6 +5885,7 @@ public final class MainActivity extends Activity {
 
     private void applyAppearance(boolean animate) {
         final LauncherTheme.Palette next = LauncherTheme.resolve(this, preferences);
+        SystemNightMode.publish(this, !next.light);
         if (palette != null && palette.light == next.light && palette.accent == next.accent) {
             return;
         }

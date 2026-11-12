@@ -105,8 +105,21 @@ governor() { # $1 schedutil or performance
     [ "$1" = schedutil ] && sutune $p $([ ${p##*policy} = 0 ] && echo 1305600 || echo 1401600)
   done
 }
+# Maps and other apps follow Android's night mode, the launcher doesn't use it. The launcher leaves 1 (dark)
+# or 0 (light) in files/night whenever its theme resolves (SystemNightMode); mirror that here.
+# Off while persist.oabl.nightsync.off=1. Maps itself must be on "Same as device theme".
+nightsync() {
+  [ "$(getprop persist.oabl.nightsync.off)" = 1 ] && return
+  case "$(cat /data/data/com.softiva.oabl/files/night 2>/dev/null)" in
+    1) want=2; word=yes ;;
+    0) want=1; word=no ;;
+    *) return ;;
+  esac
+  [ "$(settings get secure ui_night_mode)" = "$want" ] || cmd uimode night $word >/dev/null 2>&1
+}
 apply() {
   lightstrip
+  nightsync
   cnssdiag
   savelog
   [ "$(getprop vendor.qcom.main.start)" = 1 ] || setprop vendor.qcom.main.start 1
