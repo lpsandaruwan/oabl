@@ -1,0 +1,21 @@
+// The pure, Android-free core of OABL Link: signals, the sample buffer, the simulated car, the
+// JSON protocol and pairing. Everything here is unit-tested on the JVM, with no car and no device,
+// so the whole data path can be built and verified before the real probe or the head unit exist.
+plugins {
+    id "java-library"
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+}
+
+dependencies {
+    api project(":wire")
+    implementation "org.json:json:20240303"
+    testImplementation "junit:junit:4.13.2"
+}
+
+tasks.named("test") {
+    testLogging { events "passed", "failed", "skipped" }
+}

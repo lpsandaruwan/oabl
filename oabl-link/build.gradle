@@ -1,0 +1,7 @@
+// OABL Link, a standalone project (see settings.gradle). The Android app module uses this plugin;
+// the pure :core module needs none. The version matches the launcher's so the one SDK and the one
+// Android Gradle Plugin already on this machine are reused.
+plugins {
+    id "com.android.application" version "8.13.1" apply false
+    id "com.android.library" version "8.13.1" apply false
+}

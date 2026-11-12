@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- OABL Link is read-only towards the car. CAR_ENERGY and PERMISSION_GET_DF_CATEGORY_PDCU are
+     defined by Dongfeng (we only request them) and give battery %, range and the charge figures.
+     This firmware ALSO checks df.car.permission.CAR_MILEAGE / CAR_INFO / CAR_SPEED / CAR_CABIN, but
+     leaves those four names undefined, so nothing could hold them. We define them here at signature
+     level and request them, which lets this app (and only apps with our signer) hold them; that
+     unlocks the odometer, gear, READY, outside temperature, trip computer and speed-property reads.
+     This defines undefined names, not Dongfeng's own permissions, and grants no system UID or root.
+     Link serves the box over Bluetooth only. The network permissions here are for the projection host.
+     Do not remove BLUETOOTH_SCAN here: the projection host needs its own Bluetooth discovery. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <permission android:name="df.car.permission.CAR_MILEAGE" android:protectionLevel="signature" />
+    <permission android:name="df.car.permission.CAR_INFO" android:protectionLevel="signature" />
+    <permission android:name="df.car.permission.CAR_SPEED" android:protectionLevel="signature" />
+    <permission android:name="df.car.permission.CAR_CABIN" android:protectionLevel="signature" />
+    <!-- Read-only gates for AC_SYSTEM_OFF_ST (0x21402075) and PDCU_DRIVE_MODE_ST (0x21402090); this
+         firmware checks these names but leaves them undefined, as with the four above. Link never sets. -->
+    <permission android:name="df.car.permission.CONTROL_CAR_CLIMATE" android:protectionLevel="signature" />
+    <permission android:name="df.car.permission.CAR_DYNAMICS_STATE" android:protectionLevel="signature" />
+    <!-- CAR_ENERGY, the PDCU category and the rest are Dongfeng-defined: requested only. -->
+
+    <uses-permission android:name="df.car.permission.CAR_ENERGY" />
+    <uses-permission android:name="df.car.permission.CAR_ENERGY_PORTS" />
+    <uses-permission android:name="df.car.permission.CAR_MILEAGE" />
+    <uses-permission android:name="df.car.permission.CAR_INFO" />
+    <uses-permission android:name="df.car.permission.CAR_SPEED" />
+    <uses-permission android:name="df.car.permission.CAR_CABIN" />
+    <uses-permission android:name="df.car.permission.CONTROL_CAR_CLIMATE" />
+    <uses-permission android:name="df.car.permission.CAR_DYNAMICS_STATE" />
+    <uses-permission android:name="df.car.permission.PERMISSION_GET_DF_CATEGORY_PDCU" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+
+    <application
+        android:allowBackup="false">
+        <activity
+            android:name="com.softiva.oabllink.app.ProbeActivity"
+            android:process=":oabl_link"
+            android:exported="true"
+            android:label="OABL Link">
+            <intent-filter android:priority="-1">
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name="com.softiva.oabllink.app.LinkService"
+            android:process=":oabl_link"
+            android:exported="false" />
+
+        <receiver
+            android:name="com.softiva.oabllink.app.BootReceiver"
+            android:process=":oabl_link"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

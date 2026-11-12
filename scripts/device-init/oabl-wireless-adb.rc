@@ -1,0 +1,15 @@
+# Private development box only. Legacy TCP ADB inherits the firmware's
+# authentication policy; this rule does not disable authentication or change USB.
+# Opt out before stopping ADB: setprop persist.oabl.adb.enabled 0
+
+on property:sys.boot_completed=1 && property:persist.oabl.adb.enabled=1
+    setprop persist.adb.tcp.port 5555
+    setprop service.adb.tcp.port 5555
+    restart adbd
+    setprop sys.oabl.adb.boot_ready 1
+
+# Vendor USB/CarPlay transitions can stop the shared daemon after boot.
+# Keep the requested TCP endpoint available without changing sys.usb.config.
+on property:init.svc.adbd=stopped && property:sys.boot_completed=1 && property:persist.oabl.adb.enabled=1
+    setprop service.adb.tcp.port 5555
+    start adbd

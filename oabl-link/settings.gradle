@@ -1,0 +1,24 @@
+// OABL Link: the read-only head-unit app that reads the car's data and serves it to the AI box.
+// A standalone project, deliberately separate from the OpenAiBoxLauncher build, so work here never
+// disturbs the launcher. See ../docs/ev-cockpit/energy-companion.md §3.
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "OablLink"
+include(":core")
+include(":app")
+include(":wire", ":bluetooth")
+include(":headunit")

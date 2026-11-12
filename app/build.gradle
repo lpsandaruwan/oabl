@@ -1,0 +1,63 @@
+plugins {
+    id "com.android.application"
+}
+
+dependencies {
+    implementation project(":bluetooth")
+    // Playback runs on Media3 ExoPlayer in its own ":music" process; the UI talks to it through a
+    // Media3 session. Decoding uses the box's platform codecs (FLAC, MP3, AAC, Vorbis, Opus, PCM).
+    implementation "androidx.media3:media3-exoplayer:1.11.1"
+    implementation "androidx.media3:media3-session:1.11.1"
+    // Map for picking Home and Work precisely: OpenStreetMap tiles, no account or API key.
+    implementation "org.osmdroid:osmdroid-android:6.1.20"
+    // JVM unit tests for the pure EV energy model (EnergyModel, GpsMotion, IdleLedger).
+    testImplementation "junit:junit:4.13.2"
+    // The car-link client parses JSON from OABL Link; the device uses Android's org.json, the JVM
+    // tests this real one. Only the shared subset (keys(), getDouble, opt*) is used, so both agree.
+    testImplementation "org.json:json:20240303"
+}
+
+android {
+    namespace "com.softiva.oabl"
+    compileSdk 36
+
+    defaultConfig {
+        applicationId "com.softiva.oabl"
+        minSdk 24
+        // Keep the launcher aligned with current Android behavior while retaining
+        // installation support for older AI boxes through minSdk.
+        targetSdk 36
+        versionCode 121
+        versionName "0.1.120"
+        // The AI box and target phones are ARM. Avoid shipping two unused x86 decoder copies.
+        ndk { abiFilters "arm64-v8a", "armeabi-v7a" }
+        testInstrumentationRunner project.findProperty("oablTestRunner") ?: "com.softiva.oabl.NavigationHintsTestRunner"
+    }
+
+    buildTypes {
+        release {
+            // Signed like the debug builds so `install -r` keeps all data, but not debuggable: ART
+            // only pre-compiles non-debuggable apps (box test 2026-10-24: status stayed "verify").
+            signingConfig signingConfigs.debug
+            // R8 shrinks and optimizes (names are kept; see proguard-rules.pro).
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    // liboablaudio: pins the music playback thread to the performance cores.
+    ndkVersion "28.2.13676358"
+    externalNativeBuild {
+        cmake { path "src/main/cpp/CMakeLists.txt" }
+    }
+
+    lint {
+        abortOnError true
+        checkReleaseBuilds true
+    }
+}

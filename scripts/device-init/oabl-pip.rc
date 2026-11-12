@@ -1,0 +1,16 @@
+# Private development box only: lets the launcher hide and close Maps' picture-in-picture tile.
+# See oabl-pip/OablPip.java. Without it the tile behaves as Android leaves it, and nothing else changes.
+# Off (stays off across reboots): setprop persist.oabl.pip.enabled 0
+# Independent of the other oabl services.
+
+service oabl-pip /system/bin/sh /system/bin/oabl-pip
+    user root
+    group root
+    seclabel u:r:su:s0
+    disabled
+
+on property:sys.boot_completed=1 && property:persist.oabl.pip.enabled=1
+    start oabl-pip
+
+on property:persist.oabl.pip.enabled=0
+    stop oabl-pip

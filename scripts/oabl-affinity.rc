@@ -1,0 +1,24 @@
+# Private development box only. Keeps audio, OABL and Suding CarPlay threads on the performance
+# cores (core placement only: no real-time priority, clocks, IRQ or thermal changes).
+# Off switch (restores every saved placement, stays off across reboots):
+#     setprop persist.oabl.affinity.enabled 0
+# Back on:
+#     setprop persist.oabl.affinity.enabled 1
+# Installed by scripts/box-affinity-boot.sh; independent of oabl-wireless-adb.rc.
+
+service oabl-affinity /system/bin/oabl-affinity watch
+    user root
+    # readproc: /proc is mounted hidepid=2,gid=3009. Without it every /proc listing runs a ptrace
+    # check per process, which permissive SELinux logs as "denied { read }" about once a second.
+    group root readproc
+    # init needs a domain even in permissive mode; su is the root shell's domain on this box.
+    seclabel u:r:su:s0
+    disabled
+    oneshot
+
+on property:sys.boot_completed=1 && property:persist.oabl.affinity.enabled=1
+    start oabl-affinity
+
+# "stop" asks the watcher to restore and exit (init's own stop would kill it before restoring).
+on property:persist.oabl.affinity.enabled=0
+    exec_background u:r:su:s0 root root -- /system/bin/oabl-affinity stop

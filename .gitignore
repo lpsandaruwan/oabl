@@ -1,0 +1,43 @@
+/.gradle/
+/.idea/
+/local.properties
+**/build/
+*.iml
+*.apk
+*.aab
+keystore.properties
+*.jks
+*.keystore
+.DS_Store
+
+# Local history keeps source, scripts and notes; heavy or private captures stay on disk only.
+**/.gradle/
+/docs/device-backups/
+*.tar
+*.log
+*.idsig
+*.pem
+*.zip
+
+# Native build state
+**/.cxx/
+
+# Built by scripts/device-init/oabl-pip/build.sh
+scripts/device-init/oabl-pip/oabl-pip.dex
+
+# Python bytecode
+__pycache__/
+
+# Private captures, databases and device dumps stay on this disk only (the full private history is in the local branch private-history).
+/dist/
+/docs/ev-cockpit/
+/docs/headunit-survey/
+/docs/screenshots/
+/eq-full-page.png
+/oabl-link/local.properties
+*.db
+*.sqlite
+*.sqlite3
+logcat*.txt
+tools/box-encoder/*.dex
+tools/box-trace/*.so

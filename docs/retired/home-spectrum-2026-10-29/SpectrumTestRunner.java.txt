@@ -1,0 +1,123 @@
+package com.softiva.oabl;
+
+import android.Manifest;
+import android.app.*;
+import android.content.*;
+import android.content.pm.PackageManager;
+import android.graphics.*;
+import android.os.*;
+import android.view.*;
+import java.io.*;
+import java.lang.reflect.*;
+import java.util.*;
+import java.util.function.BooleanSupplier;
+
+/** Seeded emulator only: real native FFT, header geometry, palette and lifecycle gates. */
+public final class SpectrumTestRunner extends Instrumentation {
+    private int checks;private volatile MainActivity home;
+    @Override public void onCreate(Bundle args){super.onCreate(args);start();}
+    @Override public void callActivityOnResume(Activity a){super.callActivityOnResume(a);if(a instanceof MainActivity)home=(MainActivity)a;}
+    private void check(boolean yes,String label){if(!yes)throw new AssertionError(label);checks++;}
+    @Override public void onStart(){
+        Bundle result=new Bundle();int code=Activity.RESULT_OK;Context c=getTargetContext();
+        SharedPreferences launcher=c.getSharedPreferences("launcher_preferences",0),music=c.getSharedPreferences("music",0);
+        Map<String,?> savedLauncher=launcher.getAll(),savedMusic=music.getAll(),savedEq=c.getSharedPreferences("equalizer_profile",0).getAll();
+        LauncherPreferences prefs=new LauncherPreferences(c);MusicLibrary library=MusicLibrary.get(c);MusicLibrary.Track fixture=null;
+        try{
+            check(Build.MODEL.contains("sdk_gphone"),"spectrum tests restricted to emulator");
+            check(c.checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED,"emulator audio permission granted for native verification");
+            model();SystemClock.sleep(7000);
+            prefs.setHomeSpectrum(true);prefs.setSpectrumOutputMix(false);prefs.setVisualEffects(true);prefs.setThemeMode(LauncherPreferences.THEME_DARK);
+            List<MusicLibrary.Track> songs=library.query("01 - Test drive","Title","All",0);
+            check(songs.size()==1&&songs.get(0).uri.contains("musicfixtures"),"known local tone fixture");fixture=songs.get(0);MusicLibrary.Track selected=fixture;
+            openHome();
+            ui(()->{check(spectrumView().getVisibility()!=View.VISIBLE,"no spectrum before playback");MusicClient.get(c).play(songs,selected.id);});
+            waitUi(()->MusicClient.get(c).isPlaying()&&MusicClient.get(c).audioSessionId()>0,"local playback started");
+            waitUi(()->controller().running()&&spectrumView().frames()>5,"native FFT capture and display running");
+            waitUi(()->maximum(spectrumView().levels())>.05f,"real PCM tone produces nonzero spectrum");
+            ui(()->{
+                Rect bars=rect(spectrumView()),clock=rect(home.findViewById(R.id.clock_card)),network=rect(home.findViewById(R.id.network_status));
+                check(bars.width()>100&&bars.height()>80,"header spectrum has usable space");
+                check(bars.left>=clock.right&&bars.right<=network.left,"spectrum stays between clock and signal information");
+                check(!Rect.intersects(bars,rect(home.findViewById(R.id.media_card))),"media card is untouched");
+                check(!Rect.intersects(bars,rect(home.findViewById(R.id.navigation_hint_card))),"navigation card is untouched");
+                check(spectrumView().getParent()==home.findViewById(R.id.header_space),"spectrum uses header gap, not media widget");
+            });
+            long[] frames={0};ui(()->frames[0]=spectrumView().frames());SystemClock.sleep(600);
+            ui(()->{long rate=spectrumView().frames()-frames[0];check(rate>0&&rate<=15,"capture is bounded near 20 Hz, not an unbounded animation loop");});
+            for(int mode:new int[]{LauncherPreferences.THEME_DARK,LauncherPreferences.THEME_LIGHT}){
+                prefs.setThemeMode(mode);
+                for(int accent=0;accent<LauncherTheme.ACCENT_NAMES.length;accent++){
+                    int finish=accent;prefs.setAccentIndex(accent);ui(()->{appearance();check(spectrumView().accent()==LauncherTheme.accent(mode==LauncherPreferences.THEME_LIGHT,finish),"live spectrum inherits palette "+mode+" / "+finish);});
+                }
+            }
+            ui(()->MusicClient.get(c).command("pause"));waitUi(()->spectrumView().getVisibility()!=View.VISIBLE&&!controller().running(),"paused music hides and releases spectrum");
+            ui(()->frames[0]=spectrumView().frames());SystemClock.sleep(300);ui(()->check(spectrumView().frames()==frames[0],"paused spectrum does no frame work"));
+            ui(()->MusicClient.get(c).command("play"));waitUi(()->controller().running()&&spectrumView().getVisibility()==View.VISIBLE,"resume restores spectrum");
+            prefs.setVisualEffects(false);ui(this::renderMedia);waitUi(()->!controller().running()&&spectrumView().getVisibility()!=View.VISIBLE,"performance mode suppresses capture");
+            prefs.setVisualEffects(true);ui(this::renderMedia);waitUi(()->controller().running(),"visuals mode resumes capture");
+            ui(()->c.startActivity(new Intent(c,EqualizerActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)));
+            waitUi(()->!controller().running()&&spectrumView().getVisibility()!=View.VISIBLE,"leaving Home stops analysis even while music continues");
+            ui(()->frames[0]=spectrumView().frames());SystemClock.sleep(300);ui(()->check(spectrumView().frames()==frames[0],"hidden Home gets no spectrum frames"));
+            openHome();waitUi(()->controller().running(),"returning Home resumes capture");
+
+            Context denied=new ContextWrapper(c){
+                @Override public Context getApplicationContext(){return this;}
+                @Override public int checkSelfPermission(String permission){return PackageManager.PERMISSION_DENIED;}
+            };
+            ui(()->{
+                HomeSpectrumView view=new HomeSpectrumView(c,null);PlaybackSpectrum stopped=new PlaybackSpectrum(denied,view);
+                stopped.update(true,true,c.getPackageName(),MusicClient.get(c).audioSessionId(),prefs);
+                check(!stopped.running()&&view.frames()==0,"denied permission never starts capture");stopped.close();
+                PlaybackSpectrum onlyLocal=new PlaybackSpectrum(c,view);
+                onlyLocal.update(true,true,"example.other.player",-1,prefs);check(!onlyLocal.running(),"external output mix is not implicitly opted in");onlyLocal.close();
+            });
+            check(savedEq.equals(c.getSharedPreferences("equalizer_profile",0).getAll()),"visualization never changes EQ settings");
+            prefs.setHomeSpectrum(false);ui(this::renderMedia);waitUi(()->!controller().running()&&spectrumView().getVisibility()!=View.VISIBLE,"Off hides and releases spectrum");
+            prefs.setHomeSpectrum(true);prefs.setSampleWallpaper(true);prefs.setThemeMode(LauncherPreferences.THEME_DARK);prefs.setAccentIndex(5);ui(()->{appearance();renderMedia();});
+            List<MusicLibrary.Track> realMusic=library.query("codec.flac","Title","All",0);
+            if(!realMusic.isEmpty()){ui(()->MusicClient.get(c).play(realMusic,realMusic.get(0).id));SystemClock.sleep(1300);}
+            waitUi(()->controller().running()&&maximum(spectrumView().levels())>.05f,"native music preview has real spectrum data");
+            screenshot("home-spectrum-dark.png");
+            prefs.setThemeMode(LauncherPreferences.THEME_LIGHT);prefs.setAccentIndex(6);ui(this::appearance);screenshot("home-spectrum-light.png");
+            shell("wm size 1920x720");SystemClock.sleep(400);MainActivity old=home;ui(old::recreate);
+            waitUi(()->home!=old&&home.hasWindowFocus(),"ultra-wide Home recreated");
+            waitUi(()->controller().running()&&maximum(spectrumView().levels())>.05f,"live spectrum works in compact ultra-wide header");
+            ui(()->{Rect bars=rect(spectrumView());check(bars.left>=rect(home.findViewById(R.id.clock_card)).right&&bars.right<=rect(home.findViewById(R.id.network_status)).left,"ultra-wide spectrum does not overlap clock or signal");});
+            screenshot("home-spectrum-ultrawide.png");
+            shell("wm size reset");SystemClock.sleep(300);MainActivity compact=home;ui(compact::recreate);waitUi(()->home!=compact&&home.hasWindowFocus(),"native display restored");
+            ui(()->MusicClient.get(c).command("pause"));waitUi(()->spectrumView().getVisibility()!=View.VISIBLE,"pause clears header again");screenshot("home-spectrum-paused.png");
+            result.putString("stream","PASS · "+checks+" spectrum checks, including real native FFT signal and all metallic palettes\n");
+        }catch(Throwable error){code=Activity.RESULT_CANCELED;result.putString("stream","FAIL after "+checks+": "+android.util.Log.getStackTraceString(error));}
+        finally{
+            ui(()->{if(home!=null)controller().stop("Paused");MusicClient.get(c).command("pause");});new MusicTestControl(this).stop();
+            if(Build.MODEL.contains("sdk_gphone"))shell("wm size reset");
+            restore(launcher,savedLauncher);restore(music,savedMusic);
+            if(fixture!=null){ContentValues v=new ContentValues();v.put("plays",fixture.plays);library.getWritableDatabase().update("tracks",v,"_id=?",new String[]{""+fixture.id});}
+        }
+        finish(code,result);
+    }
+    private void model(){
+        SpectrumAnalyser analyser=new SpectrumAnalyser();float[] bands=new float[SpectrumAnalyser.BANDS];byte[] fft=new byte[1024];
+        check(!analyser.analyse(fft,48000000,bands)&&maximum(bands)==0,"silence produces no invented energy");
+        fft[0]=127;fft[1]=127;check(!analyser.analyse(fft,48000000,bands),"DC and Nyquist are not misread as music bands");
+        fft[10]=100;check(analyser.analyse(fft,48000000,bands),"complex FFT tone detected");int low=peak(bands);check(low==4,"234 Hz tone maps to logarithmic low band");
+        java.util.Arrays.fill(fft,(byte)0);fft[512]=127;fft[513]=127;analyser.analyse(fft,48000000,bands);check(peak(bands)>low,"12 kHz energy maps to high band");
+        for(float level:bands)check(Float.isFinite(level)&&level>=0&&level<=1,"bounded finite display magnitude");
+        check(!analyser.analyse(fft,0,bands)&&maximum(bands)==0,"invalid capture rate clears display");
+    }
+    private static float maximum(float[] levels){float value=0;for(float f:levels)value=Math.max(value,f);return value;}
+    private static int peak(float[] values){int at=0;for(int i=1;i<values.length;i++)if(values[i]>values[at])at=i;return at;}
+    private void openHome(){ui(()->getTargetContext().startActivity(new Intent(getTargetContext(),MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)));waitUi(()->home!=null&&home.hasWindowFocus(),"Home in foreground");waitForIdleSync();}
+    private HomeSpectrumView spectrumView(){return home.findViewById(R.id.home_spectrum);}
+    private PlaybackSpectrum controller(){try{Field f=MainActivity.class.getDeclaredField("spectrum");f.setAccessible(true);return (PlaybackSpectrum)f.get(home);}catch(Exception e){throw new AssertionError(e);}}
+    private void appearance(){invoke("applyAppearance",new Class<?>[]{boolean.class},false);}
+    private void renderMedia(){invoke("renderMedia",new Class<?>[0]);}
+    private void invoke(String method,Class<?>[] types,Object... values){try{Method m=MainActivity.class.getDeclaredMethod(method,types);m.setAccessible(true);m.invoke(home,values);}catch(Exception e){throw new AssertionError(e);}}
+    private Rect rect(View v){Rect r=new Rect();v.getGlobalVisibleRect(r);return r;}
+    private void waitUi(BooleanSupplier predicate,String message){long end=SystemClock.elapsedRealtime()+10000;while(SystemClock.elapsedRealtime()<end){boolean[] ready={false};ui(()->ready[0]=predicate.getAsBoolean());if(ready[0]){checks++;return;}SystemClock.sleep(100);}throw new AssertionError(message);}
+    private void ui(Runnable task){Throwable[] error={null};runOnMainSync(()->{try{task.run();}catch(Throwable t){error[0]=t;}});if(error[0]!=null)throw new AssertionError(error[0]);}
+    private void screenshot(String name)throws Exception{waitForIdleSync();SystemClock.sleep(350);Bitmap b=getUiAutomation().takeScreenshot();try(FileOutputStream out=new FileOutputStream(new File(getTargetContext().getExternalFilesDir(null),name))){b.compress(Bitmap.CompressFormat.PNG,100,out);}finally{b.recycle();}}
+    private void shell(String command){try(ParcelFileDescriptor fd=getUiAutomation().executeShellCommand(command);InputStream in=new ParcelFileDescriptor.AutoCloseInputStream(fd)){byte[] b=new byte[1024];while(in.read(b)!=-1){}}catch(IOException e){throw new RuntimeException(e);}}
+    private static void restore(SharedPreferences prefs,Map<String,?> values){SharedPreferences.Editor e=prefs.edit().clear();for(Map.Entry<String,?> entry:values.entrySet()){Object v=entry.getValue();String k=entry.getKey();if(v instanceof String)e.putString(k,(String)v);else if(v instanceof Boolean)e.putBoolean(k,(Boolean)v);else if(v instanceof Integer)e.putInt(k,(Integer)v);else if(v instanceof Long)e.putLong(k,(Long)v);else if(v instanceof Float)e.putFloat(k,(Float)v);}e.commit();}
+}

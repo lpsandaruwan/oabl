@@ -1,0 +1,218 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Optional, user-granted: brightness and Do Not Disturb toggles in the dock Controls sheet. -->
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" tools:ignore="ProtectedPermissions" />
+    <!-- Optional ADB grant, used only when wireless-debug recovery is explicitly enabled. -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+    <!-- A home app lists every app; also used by the read-only Car data scan. -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="QueryAllPackagesPermission" />
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
+    <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
+    <queries>
+        <package android:name="com.google.android.projection.gearhead" />
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
+    <application
+        android:name=".LauncherApplication"
+        android:usesCleartextTraffic="true"
+        android:allowBackup="true"
+        android:icon="@drawable/ic_launcher_legacy"
+        android:label="@string/app_name"
+        android:resizeableActivity="true"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme">
+
+        <activity
+            android:name=".MainActivity"
+            android:alwaysRetainTaskState="true"
+            android:clearTaskOnLaunch="true"
+            android:configChanges="keyboardHidden|orientation|screenSize|smallestScreenSize|uiMode"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:screenOrientation="landscape"
+            android:stateNotNeeded="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity android:name=".CoreTuningActivity" android:exported="false"
+            android:taskAffinity="com.softiva.oabl.tools"
+            android:label="Core settings" android:screenOrientation="landscape" />
+
+        <activity android:name=".MusicActivity" android:exported="true"
+            android:enableOnBackInvokedCallback="true"
+            android:label="OABL Music" android:icon="@drawable/ic_music" android:resizeableActivity="true"
+            android:taskAffinity="com.softiva.oabl.music"
+            android:documentLaunchMode="never">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <!-- Music plays in its own process so launcher UI work and garbage collection can't stall
+             audio. Exported for Media3: cars, Bluetooth and the notification reach the session
+             through this filter; OABL-only commands are limited to OABL's own package. -->
+        <service android:name=".MusicService" android:exported="true"
+            android:process=":music"
+            android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
+        <!-- Media buttons (steering wheel, Bluetooth) while the music process isn't running, e.g.
+             right after the box starts: Android remembers this receiver as the last media-button
+             target, and it starts MusicService, whose onPlaybackResumption resumes the last song. -->
+        <receiver android:name="androidx.media3.session.MediaButtonReceiver" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
+        <service android:name=".MusicScanService" android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <activity android:name=".TripHistoryActivity" android:exported="false"
+            android:label="Trip history" android:taskAffinity="com.softiva.oabl.tools"
+            android:screenOrientation="sensorLandscape" />
+        <activity android:name=".PlacePickerActivity" android:exported="false"
+            android:label="Set place" android:taskAffinity="com.softiva.oabl.tools"
+            android:screenOrientation="sensorLandscape" android:windowSoftInputMode="adjustNothing" />
+        <!-- Google Maps → Share → OABL: save the shared place as Home or Work. -->
+        <activity android:name=".PlaceShareActivity" android:exported="true"
+            android:label="OABL · save as Home or Work"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true" android:taskAffinity="com.softiva.oabl.share">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+        <activity android:name=".EnergyActivity" android:exported="false"
+            android:label="Energy" android:taskAffinity="com.softiva.oabl.tools"
+            android:screenOrientation="sensorLandscape" />
+        <activity android:name=".BatteryActivity" android:exported="false"
+            android:label="Battery" android:taskAffinity="com.softiva.oabl.tools"
+            android:screenOrientation="sensorLandscape" />
+        <activity android:name=".EnergyDataActivity" android:exported="false"
+            android:label="Energy data and backups" android:screenOrientation="sensorLandscape" />
+        <provider android:name=".EnergyProvider" android:authorities="com.softiva.oabl.energy" android:exported="false" android:process=":energy" />
+        <service android:name=".EnergyCollectorService" android:exported="false" android:process=":energy"
+            android:foregroundServiceType="connectedDevice" android:stopWithTask="false" />
+        <activity android:name=".FindSoundActivity" android:exported="false"
+            android:label="Find your sound" android:screenOrientation="sensorLandscape" />
+        <activity android:name=".EqualizerActivity" android:exported="true"
+            android:taskAffinity="com.softiva.oabl.equalizer"
+            android:label="OABL Equalizer" android:resizeableActivity="true">
+            <intent-filter>
+                <action android:name="android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- Background services share their own ":services" process. The launcher UI must not host
+             a foreground or system-bound service, or Android never trims or reclaims it while other
+             apps (YouTube, Maps) are in front. -->
+        <service android:name=".SoundEqualizerService" android:exported="false"
+            android:process=":services"
+            android:foregroundServiceType="mediaPlayback" />
+        <receiver android:name=".EqualizerSessionReceiver" android:exported="true"
+            android:process=":services">
+            <intent-filter>
+                <action android:name="android.media.action.OPEN_AUDIO_EFFECT_CONTROL_SESSION" />
+                <action android:name="android.media.action.CLOSE_AUDIO_EFFECT_CONTROL_SESSION" />
+            </intent-filter>
+        </receiver>
+
+        <service
+            android:name=".MediaAccessService"
+            android:process=":services"
+            android:exported="true"
+            android:label="@string/notification_listener_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".SplitScreenService"
+            android:process=":services"
+            android:exported="true"
+            android:label="@string/split_service_name"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/split_accessibility_service" />
+        </service>
+
+        <service
+            android:name=".DriveOverlayService"
+            android:exported="false"
+            android:foregroundServiceType="location|connectedDevice" />
+
+        <!-- GPS for the EV energy model, only while a journey is active. -->
+        <service
+            android:name=".JourneyService" android:process=":energy"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+
+        <receiver
+            android:name=".BootReceiver"
+            android:directBootAware="true"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter android:priority="1000">
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.USER_UNLOCKED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.mediatek.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.fyt.boot.ACCON" />
+                <action android:name="com.glsx.boot.ACCON" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

@@ -1,0 +1,19 @@
+# Private Bengal AI box: opt-in persistent USB debugging mode.
+# This uses the port for ADB instead of its CarPlay gadget.
+service oabl-usb-adb /system/bin/sh /system/bin/oabl-usb-adb.sh
+    class late_start
+    user root
+    group root shell system
+    seclabel u:r:su:s0
+    disabled
+    oneshot
+
+on property:sys.boot_completed=1 && property:persist.oabl.usb_adb.enabled=1
+    start oabl-usb-adb
+
+on property:persist.oabl.usb_adb.enabled=1 && property:sys.boot_completed=1
+    start oabl-usb-adb
+
+# The vendor CarPlay process can select its special gadget after Android boots.
+on property:sys.usb.configfs=2 && property:sys.boot_completed=1 && property:persist.oabl.usb_adb.enabled=1
+    start oabl-usb-adb

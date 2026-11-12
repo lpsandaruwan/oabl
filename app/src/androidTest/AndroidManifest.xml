@@ -1,0 +1,13 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <instrumentation android:name="com.softiva.oabl.NavigationHintsTestRunner" android:targetPackage="com.softiva.oabl" />
+    <instrumentation android:name="com.softiva.oabl.EnergyCollectorTestRunner" android:targetPackage="com.softiva.oabl" />
+    <instrumentation android:name="com.softiva.oabl.CarEnergyIntegrationRunner" android:targetPackage="com.softiva.oabl" />
+    <instrumentation android:name="com.softiva.oabl.EnergyArchiveTestRunner" android:targetPackage="com.softiva.oabl" />
+    <instrumentation android:name="com.softiva.oabl.EnergyTestRunner" android:targetPackage="com.softiva.oabl" />
+    <instrumentation android:name="com.softiva.oabl.LiveEnergyTestRunner" android:targetPackage="com.softiva.oabl" />
+    <instrumentation android:name="com.softiva.oabl.LiveEnergyLayoutTestRunner" android:targetPackage="com.softiva.oabl" />
+    <instrumentation android:name="com.softiva.oabl.DashboardPriorityTestRunner" android:targetPackage="com.softiva.oabl" />
+    <instrumentation android:name="com.softiva.oabl.AdaptiveDashboardTestRunner" android:targetPackage="com.softiva.oabl" />
+    <instrumentation android:name="com.softiva.oabl.EnergyMigrationVerificationRunner" android:targetPackage="com.softiva.oabl" />
+    <instrumentation android:name="com.softiva.oabl.EnergyAccountingRepairTestRunner" android:targetPackage="com.softiva.oabl" />
+</manifest>

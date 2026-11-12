@@ -1,0 +1,51 @@
+// The OABL Link Android app: it runs on the car's head unit, reads the car with DongfengProbe and
+// (in the next increment) serves the buffer to the box. This first build is a read-only probe viewer
+// so the live reads and the unconfirmed scales can be checked on the head unit, once installed.
+plugins {
+    id "com.android.application"
+}
+
+android {
+    namespace "com.softiva.oabllink.app"
+    compileSdk 34
+
+    defaultConfig {
+        // The head unit's installer rejects any APK that declares df.car.* permissions unless it is
+        // on its allowlist (checked by package name, before the signature). The one entry an ordinary
+        // app can use is com.koushikdutta.vysor, so OABL Link installs under that id ON THE HEAD UNIT
+        // ONLY, to read the car read-only. The Java namespace stays com.softiva.oabllink.app.
+        // NOTE: never install the real Vysor on the same head unit; this is a personal, own-car build.
+        applicationId "com.koushikdutta.vysor"
+        // The Nammi 1 head unit is Android 10 (API 29); keep room below it, and never target above it.
+        minSdk 26
+        targetSdk 29
+        versionCode 13
+        versionName "0.1.12"
+        testInstrumentationRunner "com.softiva.oabllink.app.SimulationScenarioRunner"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    lint {
+        abortOnError false
+    }
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
+}
+
+dependencies {
+    implementation project(":bluetooth")
+    implementation project(":core")
+    implementation "org.json:json:20240303"
+    testImplementation "junit:junit:4.13.2"
+}

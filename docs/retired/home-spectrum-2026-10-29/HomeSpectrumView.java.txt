@@ -1,0 +1,198 @@
+package com.softiva.oabl;
+
+import android.content.Context;
+import android.graphics.Canvas;
+import android.graphics.LinearGradient;
+import android.graphics.Paint;
+import android.graphics.Shader;
+import android.os.SystemClock;
+import android.util.AttributeSet;
+import android.view.View;
+
+/**
+ * Thin, mirrored, palette-tinted spectrum. Real FFT frames (about 20 Hz) set targets; the bars
+ * ease toward them on every display frame with slowly falling peak caps. When music pauses or
+ * goes quiet the whole view fades out and stops drawing; status text lives in the options dialog.
+ */
+public final class HomeSpectrumView extends View {
+    /** Fraction of the height above the baseline; the rest holds the reflection. */
+    private static final float BASELINE = 0.78f;
+    /** 15 fps: each spectrum frame re-renders Home, which costs most of a core at 30 fps on these boxes. */
+    private static final long FRAME_MS = 66;
+    private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint mirror = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final float[] levels = new float[SpectrumAnalyser.BANDS];
+    private final float[] shown = new float[SpectrumAnalyser.BANDS];
+    private final float[] peaks = new float[SpectrumAnalyser.BANDS];
+    private final long[] peakHold = new long[SpectrumAnalyser.BANDS];
+    private final float density;
+    private LauncherTheme.Palette palette;
+    private String message = "Enable music spectrum";
+    private boolean hint = true;
+    private float alpha;
+    private float alphaTarget = 1f;
+    private long lastDraw;
+    private long frames;
+    private final Runnable hide = () -> { if (alphaTarget == 0f && alpha < 0.01f) setVisibility(INVISIBLE); };
+
+    public HomeSpectrumView(Context context, AttributeSet attrs) {
+        super(context, attrs);
+        density = getResources().getDisplayMetrics().density;
+        palette = LauncherTheme.resolve(context, new LauncherPreferences(context));
+        text.setTextAlign(Paint.Align.CENTER);
+        text.setTextSize(11 * getResources().getDisplayMetrics().scaledDensity);
+        setFocusable(true);
+    }
+
+    void theme(LauncherTheme.Palette next) {
+        palette = next;
+        shader();
+        invalidate();
+    }
+
+    private void shader() {
+        int h = getHeight();
+        if (h <= 0) return;
+        float baseline = h * BASELINE;
+        int accent = palette.accent;
+        int bright = palette.light ? accent : mixWhite(accent, 0.35f);
+        paint.setShader(new LinearGradient(0, baseline, 0, 0,
+                new int[]{(accent & 0x00ffffff) | 0x99000000, bright}, null, Shader.TileMode.CLAMP));
+        mirror.setShader(new LinearGradient(0, baseline, 0, h,
+                new int[]{(accent & 0x00ffffff) | 0x55000000, accent & 0x00ffffff}, null, Shader.TileMode.CLAMP));
+    }
+
+    private static int mixWhite(int color, float amount) {
+        int r = (color >> 16) & 0xff, g = (color >> 8) & 0xff, b = color & 0xff;
+        return 0xff000000 | (Math.round(r + (255 - r) * amount) << 16)
+                | (Math.round(g + (255 - g) * amount) << 8) | Math.round(b + (255 - b) * amount);
+    }
+
+    /** null while live; otherwise the reason the spectrum is idle. */
+    void state(String value) {
+        if (java.util.Objects.equals(message, value)) return;
+        message = value;
+        // Only first-use prompts stay on the dashboard; every other status fades the view away.
+        hint = value != null && (value.startsWith("Enable") || value.startsWith("Allow"));
+        alphaTarget = value == null || hint ? 1f : 0f;
+        setContentDescription((value == null ? "Live music spectrum" : value)
+                + ". Tap for spectrum options. Long-press to open Equalizer.");
+        kick();
+    }
+
+    /** Current status for the options dialog, or null while live. */
+    String status() {
+        return message;
+    }
+
+    /** Fades the view out, e.g. when a first-use prompt should not show while music is stopped. */
+    void dismiss() {
+        alphaTarget = 0f;
+        kick();
+    }
+
+    void clear(String value) {
+        java.util.Arrays.fill(levels, 0);
+        state(value);
+        kick();
+    }
+
+    void frame(float[] next) {
+        for (int i = 0; i < levels.length; i++) levels[i] = Math.max(0, Math.min(1, next[i]));
+        frames++;
+        kick();
+    }
+
+    long frames() { return frames; }
+    float[] levels() { return levels.clone(); }
+    int accent() { return palette.accent; }
+
+    /**
+     * At most one redraw pending. Audio frames arrive 20-30 times a second; scheduling a redraw for
+     * each one (plus the animation loop) re-rendered Home at the full 30 fps.
+     */
+    private boolean redrawPending;
+    private final Runnable redraw = () -> { redrawPending = false; invalidate(); };
+
+    private void kick() {
+        removeCallbacks(hide);
+        if (getVisibility() != VISIBLE || redrawPending) return;
+        redrawPending = true;
+        postDelayed(redraw, FRAME_MS);
+    }
+
+    @Override
+    protected void onSizeChanged(int w, int h, int ow, int oh) {
+        super.onSizeChanged(w, h, ow, oh);
+        shader();
+    }
+
+    @Override
+    protected void onVisibilityChanged(View changedView, int visibility) {
+        super.onVisibilityChanged(changedView, visibility);
+        lastDraw = 0;
+        if (visibility == VISIBLE) kick();
+    }
+
+    @Override
+    protected void onDraw(Canvas c) {
+        super.onDraw(c);
+        long now = SystemClock.uptimeMillis();
+        float dt = lastDraw == 0 ? 0.016f : Math.min(0.05f, (now - lastDraw) / 1000f);
+        lastDraw = now;
+        float rise = 1f - (float) Math.exp(-24 * dt);
+        float fall = 1f - (float) Math.exp(-7 * dt);
+        alpha += (alphaTarget - alpha) * (1f - (float) Math.exp(-9 * dt));
+        boolean moving = Math.abs(alphaTarget - alpha) > 0.005f;
+        for (int i = 0; i < shown.length; i++) {
+            float target = message == null ? levels[i] : 0f;
+            shown[i] += (target - shown[i]) * (target > shown[i] ? rise : fall);
+            if (shown[i] < 0.002f) shown[i] = 0f;
+            if (shown[i] >= peaks[i]) {
+                peaks[i] = shown[i];
+                peakHold[i] = now + 380;
+            } else if (now > peakHold[i]) {
+                peaks[i] = Math.max(shown[i], peaks[i] - 0.85f * dt);
+            }
+            moving |= Math.abs(target - shown[i]) > 0.002f || peaks[i] > shown[i] + 0.002f;
+        }
+
+        int w = getWidth();
+        float h = getHeight();
+        float baseline = h * BASELINE;
+        float room = baseline - 6 * density;
+        float step = w / (float) shown.length;
+        float bar = Math.max(2 * density, step * 0.42f);
+        float radius = bar / 2;
+        int a = Math.round(255 * Math.max(0f, Math.min(1f, alpha)));
+        if (a > 0 && paint.getShader() != null) {
+            paint.setAlpha(a);
+            mirror.setAlpha(a);
+            for (int i = 0; i < shown.length; i++) {
+                float x = i * step + (step - bar) / 2;
+                float height = Math.max(bar, shown[i] * room);
+                c.drawRoundRect(x, baseline - height, x + bar, baseline, radius, radius, paint);
+                c.drawRoundRect(x, baseline + 2 * density, x + bar,
+                        baseline + 2 * density + height * 0.32f, radius, radius, mirror);
+                if (peaks[i] > 0.02f) {
+                    float y = baseline - peaks[i] * room - 4 * density;
+                    c.drawRoundRect(x, y, x + bar, y + 2 * density, density, density, paint);
+                }
+            }
+            if (hint && message != null) {
+                text.setColor(palette.muted);
+                text.setAlpha(a);
+                c.drawText(message, w / 2f, baseline - room * 0.45f, text);
+            }
+        }
+        if (moving) {
+            kick();
+        } else if (alphaTarget == 0f) {
+            lastDraw = 0;
+            post(hide);
+        } else {
+            lastDraw = 0;
+        }
+    }
+}

@@ -1,0 +1,341 @@
+package com.softiva.oabl;
+
+import android.app.Activity;
+import android.content.res.ColorStateList;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
+import android.media.AudioAttributes;
+import android.media.AudioFormat;
+import android.media.AudioTrack;
+import android.os.Bundle;
+import android.view.Gravity;
+import android.view.View;
+import android.view.WindowManager;
+import android.widget.LinearLayout;
+import android.widget.ProgressBar;
+import android.widget.TextView;
+import java.util.Locale;
+import java.util.Random;
+
+/**
+ * Ear-matching speaker calibration, no microphone needed. Alternates a 1 kHz reference with a
+ * third-octave pink-noise test band; the listener nudges the test band until both sound equally
+ * loud. Typical equal-loudness differences are pre-compensated, so the result describes the
+ * speakers rather than the ear. The correction is applied at 75 % and leans on cuts.
+ */
+public final class SpeakerCalibrationActivity extends Activity {
+    private static final float[] BANDS = {250, 315, 400, 500, 630, 800, 1250, 1600, 2000, 2500, 3150, 4000, 5000};
+    /** Approximate 60-phon equal-loudness offsets relative to 1 kHz (ISO 226), in dB. */
+    private static final float[] EAR = {4.5f, 3.5f, 2.5f, 1.5f, .5f, 0, 1, 1, -1, -3, -4.5f, -4.5f, -3};
+    private static final float REFERENCE = 1000;
+    private static final int RATE = 48000;
+    private final float[] offsets = new float[BANDS.length];
+    private LauncherTheme.Palette palette;
+    private int step;
+    private TextView stepLabel, offsetLabel, playing;
+    private ProgressBar progress;
+    private volatile boolean running;
+    private volatile int band;
+    private volatile float offset;
+    private volatile boolean testPhase;
+    private Thread player;
+
+    @Override
+    protected void onCreate(Bundle state) {
+        super.onCreate(state);
+        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        palette = LauncherTheme.resolve(this, new LauncherPreferences(this));
+        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                | View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION);
+        build();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // Measure the speakers themselves, not the current EQ.
+        SoundEqualizerService.setBypass(this, true);
+        startPlayer();
+    }
+
+    @Override
+    protected void onPause() {
+        stopPlayer();
+        SoundEqualizerService.setBypass(this, false);
+        super.onPause();
+    }
+
+    private void build() {
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setGravity(Gravity.CENTER_HORIZONTAL);
+        page.setPadding(dp(40), dp(28), dp(40), dp(28));
+        page.setBackgroundColor(palette.root);
+        setContentView(page);
+
+        TextView title = text("Speaker calibration", 30, palette.ink, true);
+        page.addView(title);
+        TextView intro = text("Park, set a comfortable listening volume and sit in your usual seat. "
+                + "You will hear a reference sound, then a test sound. Adjust the test sound until both feel equally loud.",
+                15, palette.muted, false);
+        intro.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams introSize = new LinearLayout.LayoutParams(dp(720), LinearLayout.LayoutParams.WRAP_CONTENT);
+        introSize.topMargin = dp(10);
+        page.addView(intro, introSize);
+
+        progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        progress.setMax(BANDS.length);
+        progress.setProgressTintList(ColorStateList.valueOf(palette.accent));
+        LinearLayout.LayoutParams progressSize = new LinearLayout.LayoutParams(dp(520), dp(8));
+        progressSize.topMargin = dp(26);
+        page.addView(progress, progressSize);
+
+        stepLabel = text("", 22, palette.ink, true);
+        LinearLayout.LayoutParams stepSize = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        stepSize.topMargin = dp(18);
+        page.addView(stepLabel, stepSize);
+        playing = text("", 14, palette.accent, true);
+        page.addView(playing);
+
+        LinearLayout controls = new LinearLayout(this);
+        controls.setGravity(Gravity.CENTER);
+        controls.addView(button("Test is quieter\n▲  raise it", false, () -> nudge(1)), new LinearLayout.LayoutParams(dp(220), dp(96)));
+        LinearLayout middle = new LinearLayout(this);
+        middle.setOrientation(LinearLayout.VERTICAL);
+        middle.setGravity(Gravity.CENTER);
+        offsetLabel = text("", 34, palette.ink, true);
+        offsetLabel.setFontFeatureSettings("tnum");
+        middle.addView(offsetLabel);
+        middle.addView(text("test band level", 12, palette.muted, false));
+        controls.addView(middle, new LinearLayout.LayoutParams(dp(200), dp(96)));
+        controls.addView(button("Test is louder\n▼  lower it", false, () -> nudge(-1)), new LinearLayout.LayoutParams(dp(220), dp(96)));
+        LinearLayout.LayoutParams controlsSize = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        controlsSize.topMargin = dp(24);
+        page.addView(controls, controlsSize);
+
+        LinearLayout footer = new LinearLayout(this);
+        footer.setGravity(Gravity.CENTER);
+        footer.addView(button("Cancel", false, this::finish), new LinearLayout.LayoutParams(dp(160), dp(56)));
+        LinearLayout.LayoutParams backSize = new LinearLayout.LayoutParams(dp(160), dp(56));
+        backSize.leftMargin = dp(12);
+        footer.addView(button("Back", false, () -> move(-1)), backSize);
+        LinearLayout.LayoutParams nextSize = new LinearLayout.LayoutParams(dp(260), dp(56));
+        nextSize.leftMargin = dp(12);
+        footer.addView(button("Sounds equal · next", true, () -> move(1)), nextSize);
+        LinearLayout.LayoutParams footerSize = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        footerSize.topMargin = dp(28);
+        page.addView(footer, footerSize);
+        render();
+    }
+
+    private void nudge(float db) {
+        offsets[step] = Math.max(-12, Math.min(12, offsets[step] + db));
+        offset = offsets[step];
+        render();
+    }
+
+    private void move(int direction) {
+        int next = step + direction;
+        if (next < 0) return;
+        if (next >= BANDS.length) {
+            save();
+            return;
+        }
+        step = next;
+        band = step;
+        offset = offsets[step];
+        render();
+    }
+
+    private void render() {
+        progress.setProgress(step);
+        stepLabel.setText(String.format(Locale.US, "Band %d of %d · %s Hz", step + 1, BANDS.length,
+                EqualizerProfile.hzLabel(BANDS[step]).replace(" k", " k")));
+        offsetLabel.setText(String.format(Locale.US, "%+.0f dB", offsets[step]));
+    }
+
+    /** Builds the speaker correction from the matched levels and returns to the Equalizer. */
+    private void save() {
+        // The listener raised a band by +x dB to match, so the speaker is x dB weak there.
+        float mean = 0;
+        for (float value : offsets) mean += value;
+        mean /= offsets.length;
+        float[] measuredHz = new float[BANDS.length + 3];
+        float[] measured = new float[BANDS.length + 3];
+        measuredHz[0] = 160; measured[0] = 0;
+        int k = 1;
+        for (int i = 0; i < BANDS.length; i++) {
+            if (BANDS[i] > REFERENCE && measuredHz[k - 1] < REFERENCE) {
+                measuredHz[k] = REFERENCE; measured[k] = clampCorrection(-mean * .75f); k++;
+            }
+            measuredHz[k] = BANDS[i];
+            measured[k] = clampCorrection((offsets[i] - mean) * .75f);
+            k++;
+        }
+        measuredHz[k] = 6300; measured[k] = 0; k++;
+        float[] hz = java.util.Arrays.copyOf(measuredHz, k);
+        float[] gains = java.util.Arrays.copyOf(measured, k);
+        float[] speaker = new float[EqualizerProfile.FINE.length];
+        for (int i = 0; i < speaker.length; i++) {
+            float f = EqualizerProfile.FINE[i];
+            speaker[i] = f <= 160 || f >= 6300 ? 0 : EqualizerProfile.interpolate(hz, gains, f);
+        }
+        EqualizerProfile profile = new EqualizerProfile(this);
+        profile.setSpeaker(speaker, "Calibrated · " + new java.text.SimpleDateFormat("d MMM", Locale.US).format(new java.util.Date()));
+        profile.setSpeakerEnabled(true);
+        profile.flush();
+        setResult(RESULT_OK);
+        finish();
+    }
+
+    /** Prefer cuts; boosting a weak small driver mostly adds distortion. */
+    private static float clampCorrection(float value) {
+        return Math.max(-8, Math.min(3, value));
+    }
+
+    // ---- audio ----
+
+    private void startPlayer() {
+        if (running) return;
+        running = true;
+        band = step;
+        offset = offsets[step];
+        player = new Thread(this::play, "OablCalibration");
+        player.start();
+    }
+
+    private void stopPlayer() {
+        running = false;
+        if (player != null) {
+            try { player.join(500); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+            player = null;
+        }
+    }
+
+    private void play() {
+        int minimum = AudioTrack.getMinBufferSize(RATE, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT);
+        AudioTrack track = new AudioTrack.Builder()
+                .setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
+                .setAudioFormat(new AudioFormat.Builder().setSampleRate(RATE).setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO).build())
+                .setBufferSizeInBytes(Math.max(minimum, RATE / 5 * 4)).setTransferMode(AudioTrack.MODE_STREAM).build();
+        try {
+            track.play();
+            Random random = new Random(7);
+            NoiseBand noise = new NoiseBand(random);
+            int burst = RATE * 7 / 10;
+            int gap = RATE * 3 / 20;
+            short[] buffer = new short[1024 * 2];
+            while (running) {
+                for (int phase = 0; phase < 2 && running; phase++) {
+                    boolean test = phase == 1;
+                    testPhase = test;
+                    runOnUiThread(() -> playing.setText(testPhase ? "♪  test sound" : "♪  reference · 1 kHz"));
+                    int index = band;
+                    float center = test ? BANDS[index] : REFERENCE;
+                    float level = -26 + (test ? EAR[index] + offset : 0);
+                    noise.tune(center);
+                    float gain = (float) Math.pow(10, level / 20) * noise.normaliser;
+                    for (int written = 0; written < burst && running; ) {
+                        int frames = Math.min(buffer.length / 2, burst - written);
+                        for (int f = 0; f < frames; f++) {
+                            int position = written + f;
+                            float fade = Math.min(1, Math.min(position, burst - position) / (RATE * .02f));
+                            float sample = noise.next() * gain * fade;
+                            short value = (short) Math.max(-32767, Math.min(32767, sample * 32767));
+                            buffer[f * 2] = value;
+                            buffer[f * 2 + 1] = value;
+                        }
+                        track.write(buffer, 0, frames * 2);
+                        written += frames;
+                    }
+                    java.util.Arrays.fill(buffer, (short) 0);
+                    for (int written = 0; written < gap && running; written += buffer.length / 2) {
+                        track.write(buffer, 0, Math.min(buffer.length, (gap - written) * 2));
+                    }
+                }
+            }
+        } finally {
+            try { track.stop(); } catch (IllegalStateException ignored) { }
+            track.release();
+        }
+    }
+
+    /** Pink noise through two cascaded third-octave band-pass filters, RMS-normalised. */
+    private static final class NoiseBand {
+        private final Random random;
+        private float b0, b1, b2, b3, b4, b5, b6;
+        private double a1, a2, c0, c2;
+        private double x1, x2, y1, y2, u1, u2, v1, v2;
+        float normaliser = 1;
+
+        NoiseBand(Random random) { this.random = random; }
+
+        void tune(float center) {
+            double w = 2 * Math.PI * center / RATE;
+            double q = 4.32;
+            double alpha = Math.sin(w) / (2 * q);
+            double norm = 1 + alpha;
+            c0 = alpha / norm;
+            c2 = -alpha / norm;
+            a1 = -2 * Math.cos(w) / norm;
+            a2 = (1 - alpha) / norm;
+            x1 = x2 = y1 = y2 = u1 = u2 = v1 = v2 = 0;
+            // Measure output power once so every band plays at the same physical level.
+            double sum = 0;
+            int count = RATE / 2;
+            normaliser = 1;
+            for (int i = 0; i < count; i++) { float s = next(); sum += s * s; }
+            double rms = Math.sqrt(sum / count);
+            normaliser = rms > 1e-9 ? (float) (1 / rms) : 1;
+        }
+
+        float next() {
+            float white = (float) (random.nextGaussian() * .15);
+            b0 = .99886f * b0 + white * .0555179f;
+            b1 = .99332f * b1 + white * .0750759f;
+            b2 = .96900f * b2 + white * .1538520f;
+            b3 = .86650f * b3 + white * .3104856f;
+            b4 = .55000f * b4 + white * .5329522f;
+            b5 = -.7616f * b5 - white * .0168980f;
+            float pink = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * .5362f;
+            b6 = white * .115926f;
+            double y = c0 * pink + c2 * x2 - a1 * y1 - a2 * y2;
+            x2 = x1; x1 = pink; y2 = y1; y1 = y;
+            double v = c0 * y + c2 * u2 - a1 * v1 - a2 * v2;
+            u2 = u1; u1 = y; v2 = v1; v1 = v;
+            return (float) v;
+        }
+    }
+
+    // ---- views ----
+
+    private TextView text(String value, int size, int color, boolean medium) {
+        TextView view = new TextView(this);
+        view.setText(value);
+        view.setTextSize(size);
+        view.setTextColor(color);
+        view.setGravity(Gravity.CENTER);
+        if (medium) view.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        return view;
+    }
+
+    private TextView button(String label, boolean primary, Runnable action) {
+        TextView view = text(label, 15, primary ? (palette.light ? 0xffffffff : palette.root) : palette.ink, true);
+        GradientDrawable shape = new GradientDrawable();
+        shape.setCornerRadius(dp(20));
+        shape.setColor(primary ? palette.accent : (palette.light ? 0x12142e38 : 0x18ffffff));
+        view.setBackground(new RippleDrawable(ColorStateList.valueOf(0x33ffffff), shape, null));
+        view.setOnClickListener(v -> action.run());
+        view.setClickable(true);
+        view.setFocusable(true);
+        return view;
+    }
+
+    private int dp(float value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+}

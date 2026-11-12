@@ -1,0 +1,21 @@
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "OpenAiBoxLauncher"
+include(":app")
+include(":wire", ":bluetooth")
+project(":wire").projectDir = file("oabl-link/wire")
+project(":bluetooth").projectDir = file("oabl-link/bluetooth")

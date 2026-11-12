@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+    <key>CFBundleIdentifier</key><string>com.softiva.oabl.bluetoothlab.mac</string>
+    <key>CFBundleName</key><string>OABL Bluetooth Lab</string>
+    <key>CFBundleExecutable</key><string>OablBluetoothLab</string>
+    <key>CFBundleVersion</key><string>1</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>NSPrincipalClass</key><string>NSApplication</string>
+    <key>NSBluetoothAlwaysUsageDescription</key><string>Find the OABL Bluetooth Lab on your Android phone and test simulated vehicle telemetry and reconnection.</string>
+    <key>NSBluetoothPeripheralUsageDescription</key><string>Test OABL Bluetooth telemetry with your Android phone.</string>
+</dict></plist>

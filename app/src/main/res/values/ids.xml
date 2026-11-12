@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="music_pill_primary" type="id" />
+    <item name="music_cover_scale" type="id" />
+    <item name="dock_package" type="id" />
+    <item name="dock_badge" type="id" />
+    <item name="dock_dot" type="id" />
+    <item name="dock_icon" type="id" />
+</resources>

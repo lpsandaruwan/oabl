@@ -1,0 +1,96 @@
+package com.softiva.oabl;
+
+import android.Manifest;
+import android.content.Context;
+import android.content.pm.PackageManager;
+import android.media.AudioManager;
+import android.media.audiofx.Visualizer;
+import android.os.Handler;
+import android.os.HandlerThread;
+import android.os.Looper;
+import android.os.SystemClock;
+import android.view.View;
+
+/** Foreground-only, opt-in visualization; never opens a microphone, saves audio or changes DSP. */
+final class PlaybackSpectrum {
+    private final Context context;
+    private final HomeSpectrumView view;
+    private final AudioManager audio;
+    private final Handler main=new Handler(Looper.getMainLooper());
+    private HandlerThread thread;
+    private Handler worker;
+    private Visualizer visualizer;
+    private String sourceKey;
+    private volatile int generation;
+    private volatile boolean running;
+    PlaybackSpectrum(Context context,HomeSpectrumView view){this.context=context.getApplicationContext();this.view=view;audio=this.context.getSystemService(AudioManager.class);}
+    void update(boolean visible,boolean playing,String source,int localSession,LauncherPreferences prefs){update(visible,playing,source,localSession,prefs,false);}
+    /** {@code moving}: the bars stop and hide, so the car screen's video has nothing to re-encode there. */
+    void update(boolean visible,boolean playing,String source,int localSession,LauncherPreferences prefs,boolean moving){
+        String reason=null;
+        if(!visible)reason="Paused";
+        else if(moving)reason="Spectrum paused · driving";
+        else if(!prefs.homeSpectrum())reason="Enable music spectrum";
+        else if(!prefs.visualEffects())reason="Spectrum paused · performance mode";
+        else if(context.checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED)reason="Allow audio access for spectrum";
+        else if(!playing)reason="Music spectrum · paused";
+        else {
+            if(audio!=null&&audio.getMode()!=AudioManager.MODE_NORMAL)reason="Spectrum paused · audio in use";
+            else if(!context.getPackageName().equals(source)&&!prefs.spectrumOutputMix())reason="Other player · spectrum options";
+            else if(context.getPackageName().equals(source)&&localSession<=0)reason="Waiting for music audio";
+        }
+        if(reason!=null){
+            stop(reason);
+            // First-use consent is discoverable in the exact space where the bars
+            // will appear, without opening a permission dialog while driving.
+            boolean offer=visible&&!moving&&playing&&prefs.visualEffects()
+                    &&(!prefs.homeSpectrumConfigured()||reason.startsWith("Allow audio"));
+            if(offer)view.setVisibility(View.VISIBLE);else view.dismiss();
+            return;
+        }
+        int session=context.getPackageName().equals(source)?localSession:0;
+        String key=source+"|"+session;
+        view.setVisibility(View.VISIBLE);
+        if(key.equals(sourceKey))return;
+        stop("Listening for audio…");sourceKey=key;final int token=generation;
+        view.setVisibility(View.VISIBLE);
+        if(thread==null){thread=new HandlerThread("OablSpectrum");thread.start();worker=new Handler(thread.getLooper());}
+        worker.post(()->{
+            if(token!=generation)return;
+            try{
+                Visualizer candidate=new Visualizer(session);visualizer=candidate;
+                int[] range=Visualizer.getCaptureSizeRange();int size=Math.min(1024,range[1]);
+                if(size<range[0])size=range[0];
+                // Normalize only the visualization buffer so quiet listening still
+                // shows frequency detail. This never changes playback gain or EQ.
+                if(candidate.setCaptureSize(size)!=Visualizer.SUCCESS||candidate.setScalingMode(Visualizer.SCALING_MODE_NORMALIZED)!=Visualizer.SUCCESS
+                        ||candidate.setEnabled(true)!=Visualizer.SUCCESS)throw new IllegalStateException("Visualizer unavailable");
+                byte[] fft=new byte[size];float[] levels=new float[SpectrumAnalyser.BANDS];SpectrumAnalyser analyser=new SpectrumAnalyser();
+                int rate=candidate.getSamplingRate();running=true;
+                worker.post(new Runnable(){
+                    long lastSignal=SystemClock.elapsedRealtime();
+                    @Override public void run(){
+                        if(token!=generation)return;
+                        try{
+                            if(audio!=null&&audio.getMode()!=AudioManager.MODE_NORMAL){release();main.post(()->{if(token==generation)stop("Spectrum paused · audio in use");});return;}
+                            if(candidate.getFft(fft)!=Visualizer.SUCCESS)throw new IllegalStateException("Spectrum unavailable");
+                            boolean signal=analyser.analyse(fft,rate,levels);
+                            if(signal)lastSignal=SystemClock.elapsedRealtime();
+                            String message=SystemClock.elapsedRealtime()-lastSignal>2000?"Quiet / no spectrum signal":null;
+                            // One in-flight main-thread frame: the next capture is scheduled after display.
+                            main.post(()->{if(token!=generation)return;view.state(message);view.frame(levels);worker.postDelayed(this,50);});
+                        }catch(RuntimeException failure){release();main.post(()->{if(token==generation)view.clear("Spectrum unavailable for this audio");});}
+                    }
+                });
+            }catch(RuntimeException failure){release();main.post(()->{if(token==generation)view.clear("Spectrum unavailable for this audio");});}
+        });
+    }
+    void stop(String message){
+        if(sourceKey!=null||running){generation++;sourceKey=null;running=false;if(worker!=null){worker.removeCallbacksAndMessages(null);worker.post(this::release);}}
+        // The view fades itself out and then hides; it does no drawing while hidden.
+        view.clear(message);
+    }
+    private void release(){running=false;if(visualizer!=null){try{visualizer.setEnabled(false);}catch(RuntimeException ignored){}try{visualizer.release();}catch(RuntimeException ignored){}visualizer=null;}}
+    void close(){stop("Paused");if(thread!=null){worker.post(this::release);thread.quitSafely();thread=null;}}
+    boolean running(){return running;}
+}

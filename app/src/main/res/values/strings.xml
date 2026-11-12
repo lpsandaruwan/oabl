@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Open AI Box Launcher</string>
+    <string name="launcher_tagline">Drive. Listen. Navigate.</string>
+    <string name="apps">Apps</string>
+    <string name="settings">Settings</string>
+    <string name="split_pair">Split pair</string>
+    <string name="nothing_playing">Nothing playing</string>
+    <string name="media_hint">Play audio or video, or tap to open your focus app</string>
+    <string name="previous">Previous</string>
+    <string name="play_pause">Play or pause</string>
+    <string name="next">Next</string>
+    <string name="open_player">Open player</string>
+    <string name="split_service_name">OABL Back &amp; Home</string>
+    <string name="split_service_description">Keeps Back and Home buttons on the screen edge over every other app, and starts your selected pair in Android split-screen mode. It only learns which app is in front; it does not read screen contents.</string>
+    <string name="notification_listener_name">Open AI Box media and navigation</string>
+    <string name="navigation_guidance">NAVIGATION</string>
+</resources>

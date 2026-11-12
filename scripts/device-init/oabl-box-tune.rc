@@ -1,0 +1,15 @@
+# Private development box only: boot-time box settings. Physical-SIM modem start, performance
+# governor, battery saver off, audio real-time priorities, little-core minimum clock, CarPlay
+# frame interval, launcher pre-compile. See oabl-box-tune.sh.
+# Off (restores defaults, stays off across reboots): setprop persist.oabl.boxtune.enabled 0
+# Independent of oabl-wireless-adb.rc and oabl-affinity.rc.
+
+service oabl-box-tune /system/bin/sh /system/bin/oabl-box-tune
+    user root
+    group root readproc
+    seclabel u:r:su:s0
+    disabled
+    oneshot
+
+on property:sys.boot_completed=1 && property:persist.oabl.boxtune.enabled=1
+    start oabl-box-tune
