@@ -27,8 +27,8 @@ android {
         // Keep the launcher aligned with current Android behavior while retaining
         // installation support for older AI boxes through minSdk.
         targetSdk 36
-        versionCode 122
-        versionName "0.1.121"
+        versionCode 123
+        versionName "0.1.122"
         // The AI box and target phones are ARM. Avoid shipping two unused x86 decoder copies.
         ndk { abiFilters "arm64-v8a", "armeabi-v7a" }
         testInstrumentationRunner project.findProperty("oablTestRunner") ?: "com.softiva.oabl.NavigationHintsTestRunner"

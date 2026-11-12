@@ -43,7 +43,7 @@ public final class MusicActivity extends Activity {
     private TrackAdapter adapter;
     private GridView albumGrid;
     private AlbumAdapter albumAdapter;
-    private TextView favouritesChip, recentChip, crossfadeChip, upNext;
+    private TextView favouritesChip, recentChip, crossfadeChip, bassChip, headroomChip, upNext;
     private LinearLayout nowPanel;
     private final ArrayList<TextView> nowTexts = new ArrayList<>();
     private final ArrayList<MusicIconView> nowIcons = new ArrayList<>();
@@ -300,6 +300,15 @@ public final class MusicActivity extends Activity {
         detail.setGravity(Gravity.CENTER); detail.setPadding(dp(10),0,dp(10),0); detail.setLetterSpacing(.06f);
         detail.setTag("now_quality");
         labelRow.addView(detail,lp(-2,24)); informationPanel.addView(labelRow);
+        // The two sound switches that matter while listening; the sliders and the rest stay in the equalizer.
+        LinearLayout soundRow=row();
+        bassChip=soundChip("now_bass",v->cycleBass());
+        headroomChip=soundChip("now_headroom",v->toggleHeadroom());
+        LinearLayout.LayoutParams chipGap=lp(-2,24); chipGap.rightMargin=dp(8);
+        soundRow.addView(bassChip,chipGap);
+        soundRow.addView(headroomChip,lp(-2,24));
+        LinearLayout.LayoutParams soundSize=new LinearLayout.LayoutParams(-1,-2); soundSize.topMargin=dp(2);
+        informationPanel.addView(soundRow,soundSize);
         cover=new CoverView(true); cover.setTag("now_artwork");
         installCoverGestures(cover);
         int artHeight = Math.max(100, Math.min(220, getResources().getConfiguration().screenHeightDp - 430));
@@ -423,9 +432,10 @@ public final class MusicActivity extends Activity {
         MusicIconView shuffleMode=nowPanel.findViewWithTag("now_shuffle_mode");if(shuffleMode!=null)shuffleMode.colors(muted,accent);
         detail.setTextColor(nowOnArt?Color.WHITE:palette.accent);
         detail.setBackground(LauncherTheme.rounded(this,nowOnArt?0x2effffff:(palette.accent&0x00ffffff)|0x1c000000,12,0,0));
-        if(crossfadeChip!=null){
-            crossfadeChip.setTextColor(nowOnArt?Color.WHITE:palette.accent);
-            crossfadeChip.setBackground(LauncherTheme.rounded(this,nowOnArt?0x2effffff:(palette.accent&0x00ffffff)|0x1c000000,12,0,0));
+        for(TextView chip:new TextView[]{crossfadeChip,bassChip,headroomChip}){
+            if(chip==null)continue;
+            chip.setTextColor(nowOnArt?Color.WHITE:palette.accent);
+            chip.setBackground(LauncherTheme.rounded(this,nowOnArt?0x2effffff:(palette.accent&0x00ffffff)|0x1c000000,12,0,0));
         }
         for(TextView chip:nowChips)stylePill(chip,false);
         if(nowOnArt){
@@ -673,6 +683,44 @@ public final class MusicActivity extends Activity {
                 renderPlayback();});
         });
     }
+    private TextView soundChip(String tag,View.OnClickListener click){
+        TextView chip=text("",11,palette.accent);chip.setSingleLine(true);medium(chip);
+        chip.setGravity(Gravity.CENTER);chip.setPadding(dp(10),0,dp(10),0);chip.setLetterSpacing(.06f);
+        chip.setTag(tag);chip.setOnClickListener(click);return chip;
+    }
+    private static final float[] BASS_STEPS={0,3,6,9};
+    /** Bass is a slider in the equalizer; here one tap steps Off, +3, +6, +9 dB and back. */
+    private void cycleBass(){
+        EqualizerProfile profile=new EqualizerProfile(this);
+        if(!profile.enabled()){startActivity(new Intent(this,EqualizerActivity.class));return;}
+        int next=0;
+        for(int i=0;i<BASS_STEPS.length;i++)if(profile.bass()>=BASS_STEPS[i]-.25f)next=(i+1)%BASS_STEPS.length;
+        profile.setBass(BASS_STEPS[next]);
+        if(!"Custom".equals(profile.preset()))getSharedPreferences("equalizer_profile",MODE_PRIVATE).edit().putString("preset","Custom").apply();
+        soundChanged(profile);
+    }
+    private void toggleHeadroom(){
+        EqualizerProfile profile=new EqualizerProfile(this);
+        if(!profile.enabled()){startActivity(new Intent(this,EqualizerActivity.class));return;}
+        profile.setHeadroom(!profile.headroom());
+        soundChanged(profile);
+    }
+    private void soundChanged(EqualizerProfile profile){
+        profile.flush();
+        SoundEqualizerService.refresh(this);
+        MusicClient.get(this).effectsChanged();
+        renderSoundChips();
+    }
+    private void renderSoundChips(){
+        if(bassChip==null||headroomChip==null)return;
+        EqualizerProfile profile=new EqualizerProfile(this);
+        boolean on=profile.enabled();
+        String bass=!on?"BASS · EQ OFF":profile.bass()==0?"BASS OFF":String.format(java.util.Locale.US,"BASS +%.0f DB",profile.bass());
+        updateText(bassChip,bass);
+        bassChip.setContentDescription(!on?"Bass. The equalizer is off. Tap to open it.":profile.bass()==0?"Bass off. Tap to change.":"Bass plus "+Math.round(profile.bass())+" decibels. Tap to change.");
+        updateText(headroomChip,!on?"HEADROOM · EQ OFF":profile.headroom()?"HEADROOM ON":"HEADROOM OFF");
+        headroomChip.setContentDescription(!on?"Headroom. The equalizer is off. Tap to open it.":profile.headroom()?"Headroom on. Tap to turn off.":"Headroom off, loud tracks may clip. Tap to turn on.");
+    }
     private void renderPlayback() {
         if(title==null)return;MusicClient service=MusicClient.get(this);MusicLibrary.Track t=current();
         updateText(title,t==null?"Not Playing":t.title);
@@ -685,6 +733,7 @@ public final class MusicActivity extends Activity {
             updateText(crossfadeChip,fade==0?"CROSSFADE OFF":"CROSSFADE "+fade+" S");
             crossfadeChip.setContentDescription(fade==0?"Crossfade off. Tap to change.":"Crossfade "+fade+" seconds. Tap to change.");
         }
+        renderSoundChips();
         if(cover!=null)cover.bind(t);
         boolean playing=service.isPlaying();
         if(renderedTrack!=(t==null?-1:t.id)||renderedPlaying!=playing){renderedTrack=t==null?-1:t.id;renderedPlaying=playing;if(adapter!=null)adapter.notifyDataSetChanged();}
