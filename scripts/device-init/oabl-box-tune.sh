@@ -183,6 +183,51 @@ keyframes() {
     fi
   done
 }
+# Players like YouTube never announce their audio session, so the launcher's equalizer would skip them. Here, as
+# root, every 2 s the playing media sessions of other apps are read from the audio service and announced to the
+# launcher's session receiver exactly as a cooperating player would, and closed again when the player goes.
+# Voice, calls, navigation and system sounds are not media and are left alone, as is OABL Music (it announces itself).
+# Only while the equalizer is on. Off while persist.oabl.eqapps.off=1.
+EQDIR=/data/data/com.softiva.oabl
+EQLIST=/data/local/tmp/oabl-eq.players
+EQHAVE=
+eqsend() { # $1 open or close, $2 session, $3 package
+  am broadcast -n com.softiva.oabl/.EqualizerSessionReceiver \
+    -a android.media.action.$([ "$1" = open ] && echo OPEN || echo CLOSE)_AUDIO_EFFECT_CONTROL_SESSION \
+    --ei android.media.extra.AUDIO_SESSION "$2" --es android.media.extra.PACKAGE_NAME "$3" \
+    --ei android.media.extra.CONTENT_TYPE 0 >/dev/null 2>&1
+}
+eqapps_once() {
+  want=
+  if [ "$(getprop persist.oabl.eqapps.off)" != 1 ] && grep -q 'name="enabled" value="true"' $EQDIR/shared_prefs/equalizer_profile.xml 2>/dev/null; then
+    own=$(stat -c %u $EQDIR 2>/dev/null)
+    dumpsys audio 2>/dev/null | grep AudioPlaybackConfiguration > $EQLIST
+    while read -r line; do
+      case "$line" in *SoundPool*) continue ;; esac
+      case "$line" in *usage=USAGE_MEDIA*|*usage=USAGE_GAME*) ;; *) continue ;; esac
+      uid=${line#*u/pid:}; uid=${uid%%/*}
+      sid=${line##*sessionId:}; sid=${sid%% *}
+      case "$uid$sid" in *[!0-9]*|'') continue ;; esac
+      [ "$sid" -gt 0 ] && [ "$uid" -ge 10000 ] && [ "$uid" != "$own" ] || continue
+      want="$want $sid:$uid"
+    done < $EQLIST
+  fi
+  for e in $want; do
+    # Announced already and still registered with the launcher; a launcher update or crash forgets sessions.
+    case " $EQHAVE " in *" $e "*) grep -q "<string>${e%%:*}|" $EQDIR/shared_prefs/equalizer_runtime.xml 2>/dev/null && continue ;; esac
+    pkg=$(cmd package list packages --uid "${e#*:}" 2>/dev/null | head -1); pkg=${pkg#package:}; pkg=${pkg%% *}
+    [ -n "$pkg" ] && eqsend open "${e%%:*}" "$pkg"
+  done
+  for e in $EQHAVE; do
+    case " $want " in *" $e "*) continue ;; esac
+    eqsend close "${e%%:*}" x
+  done
+  EQHAVE=$want
+}
+eqapps() {
+  while [ "$(getprop persist.oabl.boxtune.enabled)" = 1 ]; do eqapps_once; sleep 2; done
+}
+eqapps &
 keyframes &
 n=0
 while [ "$(getprop persist.oabl.boxtune.enabled)" = 1 ]; do

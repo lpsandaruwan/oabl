@@ -2,6 +2,12 @@
 
 Current build: open the dock **Equalizer** shortcut, **Launcher Settings → Audio equalizer**, or a compatible player's Android audio-effect control-panel action.
 
+**Launcher 0.1.123 (12 November 2026): the equalizer also plays on YouTube, Chrome and other apps on the box.**
+- **The gap:** the equalizer attaches to audio sessions that a player announces through Android's audio-effect contract. OABL Music does, YouTube and browsers don't, so they played flat.
+- **The fix, on the box:** `oabl-box-tune` (root) reads the audio service every 2 s while the equalizer is on, takes the playing media sessions of other apps (usage media or game, not voice, calls, navigation or system sounds, not OABL Music) and announces each to the launcher's session receiver as a cooperating player would, then closes it when the player goes. The launcher is unchanged apart from a line in the Audio source dialog.
+- **Checked on the box:** YouTube's session got its DynamicsProcessing chain within about 2 s of the first sound, was closed when YouTube was stopped, and a new video got a new session. Playing with it on: audioserver about 10 % of a core, no mixer underruns.
+- **Off:** `setprop persist.oabl.eqapps.off 1`. Bass and the exciter still only work in OABL Music.
+
 **Launcher 0.1.113 (7 November 2026): the exciter, checked against how the classics work and cleaned up.**
 - **The reference design** is the Aphex Aural Exciter: the dry signal passes untouched, and a side chain (a tunable high-pass, then a harmonic generator) is mixed back in at a low level. Aphex's own manuals describe the added content as low in level yet heard as a clear lift. Later units make the generator respond more to transients. BBE's Sonic Maximizer is a different idea (phase shift plus dynamic treble EQ, no new harmonics), and users report the Aphex type can turn fizzy on bright material. Aliasing from waveshaping is a known problem, normally fixed by oversampling or by band-limiting what reaches the shaper.
 - **Two faults found in ours and fixed, each with a test:**

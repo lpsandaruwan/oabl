@@ -853,7 +853,7 @@ public final class EqualizerActivity extends Activity {
     private void showSource() {
         dialog().setTitle("Music players")
                 .setMessage((profile.enabled() ? SoundEqualizerService.status(this) : "Equalizer off")
-                        + "\n\nWorks with OABL Music and other players that support it. Navigation voice and calls are not changed.")
+                        + "\n\nWorks with OABL Music and other players that support it. On this box, apps such as YouTube and Chrome are picked up automatically while the equalizer is on. Navigation voice and calls are not changed.")
                 .setPositiveButton("OK", null).show();
     }
 
