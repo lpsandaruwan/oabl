@@ -7,6 +7,22 @@ This repository contains a native Android launcher and local music player. It su
 
 This is a personal project for one car (a Dongfeng Nammi 01) and one AI box, published as-is. Release notes, captures and device dumps are kept out of this repository; the `docs/` folder holds the design notes and findings.
 
+## Screenshots
+
+Home with the Drive & Energy card (Day / Week / Month / Trip), battery and range, speed and the media player:
+
+![Home dashboard](docs/images/home-dashboard.png)
+
+Navigation mode: Google Maps guidance and the trip's energy estimate on Home:
+
+![Navigation mode](docs/images/navigation-mode.png)
+
+The 31-band equalizer with the exciter:
+
+![Equalizer](docs/images/equalizer.png)
+
+(The position in these screenshots is a test location in Colombo, not the car's real one.)
+
 ## What works in the MVP
 
 - A real Android `HOME` activity that can replace the stock launcher.
