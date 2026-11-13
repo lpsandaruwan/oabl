@@ -50,7 +50,7 @@ public final class EqualizerActivity extends Activity {
     private SharedPreferences ui;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private TextView statusChip, preampLabel, source, linkSelector, gainLabel, normalizeSelector, bandLabel, bandGain,
-            help, exciterValue, exciterHzSelector, bassValue, headroomValue, compare;
+            help, exciterValue, exciterHzSelector, bassValue, evenValue, headroomValue, compare;
     private Switch headroomSwitch;
     private EqualizerCurveView curve;
     private EqualizerSlidersView sliders;
@@ -363,9 +363,12 @@ public final class EqualizerActivity extends Activity {
         exciterValue = text("", 15, palette.ink);
         exciterHzSelector = text("", 16, palette.ink);
         bassValue = text("", 15, palette.ink);
+        evenValue = text("", 15, palette.ink);
         LinearLayout sound = row();
         weighted(sound, sliderCard("BASS · OABL MUSIC", bassValue, "eq_bass", 20, Math.round(profile.bass() * 2),
                 p -> { profile.setBass(p / 2f); markCustom(); }), 2, 0, panelHeight(compact));
+        weighted(sound, sliderCard("EVEN OUT · OABL MUSIC", evenValue, "eq_even", 20, Math.round(profile.even() * 20),
+                p -> profile.setEven(p / 20f)), 2, 10, panelHeight(compact));
         weighted(sound, sliderCard("EXCITER · OABL MUSIC", exciterValue, "eq_exciter", 20, Math.round(profile.exciter() * 20),
                 p -> { profile.setExciter(p / 20f); markCustom(); }), 2, 10, panelHeight(compact));
         weighted(sound, control("EXCITER FROM", exciterHzSelector, () -> chooseHz("Exciter adds harmonics from", SoundEffects.EXCITER_HZ,
@@ -698,11 +701,13 @@ public final class EqualizerActivity extends Activity {
         update(bandLabel, frequency(band) + " · " + model.role(band));
         update(bandGain, db(values[Math.min(band, values.length - 1)]));
         update(exciterValue, percent(profile.exciter()));
+        update(evenValue, profile.even() == 0 ? "Off" : percent(profile.even()));
         update(bassValue, profile.bass() == 0 ? "Off" : String.format(java.util.Locale.US, "+%.1f dB", profile.bass()));
         update(exciterHzSelector, EqualizerProfile.hzLabel(profile.exciterHz()).replace(" k", " kHz"));
         // A preset or undo can change the effects under the sliders.
         syncBar("eq_exciter", profile.exciter());
         syncBar("eq_bass", profile.bass() / SoundEffects.BASS_MAX_DB);
+        syncBar("eq_even", profile.even());
         undoButton.setEnabled(!undo.isEmpty());
         undoButton.setAlpha(undo.isEmpty() ? .5f : 1f);
         redoButton.setEnabled(!redo.isEmpty());

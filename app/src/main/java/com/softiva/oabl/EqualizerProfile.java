@@ -453,6 +453,13 @@ final class EqualizerProfile {
     float bass() { return clamp(preferences.getFloat("fx_bass_db", 0), 0, SoundEffects.BASS_MAX_DB); }
     void setBass(float value) { preferences.edit().putFloat("fx_bass_db", clamp(value, 0, SoundEffects.BASS_MAX_DB)).apply(); }
 
+    /**
+     * Even out, 0..1: pulls quiet passages up and loud ones down toward one level. Like Headroom it is
+     * a global switch of the music chain, not part of a preset.
+     */
+    float even() { return clamp(preferences.getFloat("fx_even", 0), 0, 1); }
+    void setEven(float value) { preferences.edit().putFloat("fx_even", clamp(value, 0, 1)).apply(); }
+
     float[] effects() { return new float[]{exciter(), exciterHz(), bass()}; }
     void setEffects(float[] values) {
         if (values == null || values.length != EFFECTS) return;
@@ -471,7 +478,7 @@ final class EqualizerProfile {
 
     /** What OABL Music should run: the exciter and bass while the equalizer is on, nothing while it is off. */
     SoundEffects.Settings activeEffects() {
-        return enabled() ? new SoundEffects.Settings(exciter(), exciterHz(), bass(), headroom()) : SoundEffects.Settings.OFF;
+        return enabled() ? new SoundEffects.Settings(exciter(), exciterHz(), bass(), headroom(), even()) : SoundEffects.Settings.OFF;
     }
 
     // ---- output ----

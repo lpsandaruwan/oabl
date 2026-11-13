@@ -29,6 +29,12 @@ package com.softiva.oabl;
  *     harsh zone. Now only new harmonics above the band are kept.</li>
  * </ul>
  *
+ * <b>Even out</b> is a slow leveler in front of both: it measures the song's loudness (about 150 ms to
+ * rise, 400 ms to fall, both channels together so the image stays put) and moves the gain toward
+ * {@link #EVEN_TARGET_DB}, turning quiet passages up and loud ones down (less) by a share of the distance, never
+ * more than {@link #EVEN_LIMIT_DB}. A quiet intro comes up and the chorus eases down; near silence it
+ * fades out of the way, so fades and gaps aren't lifted into hiss.
+ *
  * The input is lowered by {@link Settings#preGain} first, measured on the owner's loudest masters,
  * and anything still above {@link #KNEE} is bent smoothly towards full scale instead of clipping.
  * Ten biquads per stereo frame: still far cheaper than the equalizer's FFT.
@@ -50,6 +56,25 @@ final class SoundEffects {
     private static final double ENVELOPE_S = .010, U_MAX = 2;
     /** Scales a sine's 2nd harmonic to half its level (π/4 × 0.64 ≈ 0.5), as the first version gave. */
     private static final double SHAPE_GAIN = .64;
+
+    /** Even out: where the song's average level is pulled to, the share of the distance covered at full strength going up and going down (loud parts are eased less than quiet ones are lifted), and the most the gain moves (dB). */
+    static final double EVEN_TARGET_DB = -13, EVEN_UP = 1.0, EVEN_DOWN = .5, EVEN_LIMIT_DB = 8;
+    /** Below this level the effect fades out completely; it is at full strength from EVEN_FADE_FULL_DB up. */
+    static final double EVEN_GATE_DB = -52, EVEN_FADE_FULL_DB = -42;
+    /** How fast the loudness reading rises and falls, and how smoothly the gain follows it. */
+    private static final double EVEN_ATTACK_S = .150, EVEN_RELEASE_S = .400, EVEN_GAIN_S = .020;
+    /** The gain target is recomputed every this many frames: logs and powers per frame would be wasted. */
+    private static final int EVEN_BLOCK = 32;
+
+    /** The gain Even out applies, in dB, for a song level (mean power, dBFS) at a strength 0..1. */
+    static double evenGainDb(double levelDb, float strength) {
+        if (strength <= 0 || !(levelDb > -200)) return 0;
+        double fade = Math.max(0, Math.min(1, (levelDb - EVEN_GATE_DB) / (EVEN_FADE_FULL_DB - EVEN_GATE_DB)));
+        double limit = EVEN_LIMIT_DB * strength;
+        double distance = EVEN_TARGET_DB - levelDb;
+        double gain = distance * (distance > 0 ? EVEN_UP : EVEN_DOWN) * strength * fade;
+        return Math.max(-limit, Math.min(limit, gain));
+    }
 
     /** The most the Bass slider adds, in dB. */
     static final float BASS_MAX_DB = 10;
@@ -77,21 +102,24 @@ final class SoundEffects {
     /** What to run: the exciter's amount (0..1) and where it starts, and the bass boost in dB. */
     static final class Settings {
         static final Settings OFF = new Settings(0, 3500);
-        final float exciter, exciterHz, bassDb;
+        final float exciter, exciterHz, bassDb, even;
         final boolean headroom;
 
         Settings(float exciter, float exciterHz) { this(exciter, exciterHz, 0); }
 
         Settings(float exciter, float exciterHz, float bassDb) { this(exciter, exciterHz, bassDb, true); }
 
-        Settings(float exciter, float exciterHz, float bassDb, boolean headroom) {
+        Settings(float exciter, float exciterHz, float bassDb, boolean headroom) { this(exciter, exciterHz, bassDb, headroom, 0); }
+
+        Settings(float exciter, float exciterHz, float bassDb, boolean headroom, float even) {
             this.headroom = headroom;
+            this.even = unit(even);
             this.exciter = unit(exciter);
             this.exciterHz = nearest(EXCITER_HZ, exciterHz);
             this.bassDb = unit(bassDb / BASS_MAX_DB) * BASS_MAX_DB;
         }
 
-        boolean active() { return exciter > 0 || bassDb > 0; }
+        boolean active() { return exciter > 0 || bassDb > 0 || even > 0; }
 
         /** Input scale: room for the exciter on the worst measured master, and part of the bass boost. */
         float preGain() {
@@ -103,14 +131,14 @@ final class SoundEffects {
         @Override public boolean equals(Object other) {
             if (!(other instanceof Settings)) return false;
             Settings o = (Settings) other;
-            return exciter == o.exciter && exciterHz == o.exciterHz && bassDb == o.bassDb && headroom == o.headroom;
+            return exciter == o.exciter && exciterHz == o.exciterHz && bassDb == o.bassDb && headroom == o.headroom && even == o.even;
         }
 
         @Override public int hashCode() {
-            return 31 * (31 * (31 * Float.hashCode(exciter) + Float.hashCode(exciterHz)) + Float.hashCode(bassDb)) + Boolean.hashCode(headroom);
+            return 31 * (31 * (31 * (31 * Float.hashCode(exciter) + Float.hashCode(exciterHz)) + Float.hashCode(bassDb)) + Boolean.hashCode(headroom)) + Float.hashCode(even);
         }
 
-        @Override public String toString() { return exciter + "/" + exciterHz + "/" + bassDb + "/" + headroom; }
+        @Override public String toString() { return exciter + "/" + exciterHz + "/" + bassDb + "/" + headroom + "/" + even; }
     }
 
     static int index(float[] choices, float value) {
@@ -267,12 +295,18 @@ final class SoundEffects {
         private int at, minAge;
         private double minRoom = 1, held = 1, gainSum;
         private double musicOut;
+        private final double evenAttack, evenRelease, evenSmoothing;
+        private double evenPower, evenTarget = 1, evenGain = 1;
+        private int evenCount;
 
         Chain(int channels, double rate) {
             this.channels = Math.max(1, channels);
             this.rate = rate;
             smoothing = 1 - Math.exp(-1 / (ENVELOPE_S * rate));
             bassRelease = 1 - Math.exp(-1 / (BASS_RELEASE_S * rate));
+            evenAttack = 1 - Math.exp(-1 / (EVEN_ATTACK_S * rate));
+            evenRelease = 1 - Math.exp(-1 / (EVEN_RELEASE_S * rate));
+            evenSmoothing = 1 - Math.exp(-1 / (EVEN_GAIN_S * rate));
             harmonicDecay = Math.exp(-1 / (HARMONIC_RELEASE_S * rate));
             harmonicLow.highPass(HARMONIC_LOW_HZ, .7071, rate);
             harmonicHighA.lowPass(HARMONIC_HIGH_HZ, Q1, rate);
@@ -324,6 +358,7 @@ final class SoundEffects {
         }
 
         void reset() {
+            evenPower = 0; evenTarget = evenGain = 1; evenCount = 0;
             for (int c = 0; c < channels; c++) {
                 start[c].reset(); limitA[c].reset(); limitB[c].reset(); keepA[c].reset(); keepB[c].reset();
                 envelope[c] = 0;
@@ -357,15 +392,17 @@ final class SoundEffects {
         void process(float[] frame, boolean limit) {
             float amount = settings.exciter * EXCITER_MAX;
             boolean lifting = settings.bassDb > 0;
+            double level = pre;
+            if (settings.even > 0) level *= leveler(frame);
             double room = 1;
             double harmonics = 0;
             if (lifting) {
                 double mono = 0;
-                for (int c = 0; c < channels; c++) mono += frame[c] * pre;
+                for (int c = 0; c < channels; c++) mono += frame[c] * level;
                 harmonics = harmonics(mono / channels) * harmonicWet;
             }
             for (int c = 0; c < channels; c++) {
-                double x = frame[c] * pre;
+                double x = frame[c] * level;
                 double y = x;
                 if (amount > 0) {
                     double band = limitB[c].next(limitA[c].next(start[c].next(x)));
@@ -396,6 +433,21 @@ final class SoundEffects {
             }
             musicOut = mix / channels;
             at = (at + 1) % span;
+        }
+
+        /** Even out: one gain for all channels, from the song's loudness so far; 1 when the effect is off. */
+        private double leveler(float[] frame) {
+            double power = 0;
+            for (int c = 0; c < channels; c++) power += (double) frame[c] * frame[c];
+            power /= channels;
+            evenPower += (power - evenPower) * (power > evenPower ? evenAttack : evenRelease);
+            if (++evenCount >= EVEN_BLOCK) {
+                evenCount = 0;
+                double db = 10 * Math.log10(evenPower + 1e-12);
+                evenTarget = Math.pow(10, evenGainDb(db, settings.even) / 20);
+            }
+            evenGain += (evenTarget - evenGain) * evenSmoothing;
+            return evenGain;
         }
 
         /**

@@ -43,7 +43,7 @@ public final class MusicActivity extends Activity {
     private TrackAdapter adapter;
     private GridView albumGrid;
     private AlbumAdapter albumAdapter;
-    private TextView favouritesChip, recentChip, crossfadeChip, bassChip, headroomChip, upNext;
+    private TextView favouritesChip, recentChip, crossfadeChip, bassChip, evenChip, headroomChip, upNext;
     private LinearLayout nowPanel;
     private final ArrayList<TextView> nowTexts = new ArrayList<>();
     private final ArrayList<MusicIconView> nowIcons = new ArrayList<>();
@@ -303,9 +303,12 @@ public final class MusicActivity extends Activity {
         // The two sound switches that matter while listening; the sliders and the rest stay in the equalizer.
         LinearLayout soundRow=row();
         bassChip=soundChip("now_bass",v->cycleBass());
+        evenChip=soundChip("now_even",v->cycleEven());
         headroomChip=soundChip("now_headroom",v->toggleHeadroom());
         LinearLayout.LayoutParams chipGap=lp(-2,24); chipGap.rightMargin=dp(8);
         soundRow.addView(bassChip,chipGap);
+        LinearLayout.LayoutParams evenGap=lp(-2,24); evenGap.rightMargin=dp(8);
+        soundRow.addView(evenChip,evenGap);
         soundRow.addView(headroomChip,lp(-2,24));
         LinearLayout.LayoutParams soundSize=new LinearLayout.LayoutParams(-1,-2); soundSize.topMargin=dp(2);
         informationPanel.addView(soundRow,soundSize);
@@ -432,7 +435,7 @@ public final class MusicActivity extends Activity {
         MusicIconView shuffleMode=nowPanel.findViewWithTag("now_shuffle_mode");if(shuffleMode!=null)shuffleMode.colors(muted,accent);
         detail.setTextColor(nowOnArt?Color.WHITE:palette.accent);
         detail.setBackground(LauncherTheme.rounded(this,nowOnArt?0x2effffff:(palette.accent&0x00ffffff)|0x1c000000,12,0,0));
-        for(TextView chip:new TextView[]{crossfadeChip,bassChip,headroomChip}){
+        for(TextView chip:new TextView[]{crossfadeChip,bassChip,evenChip,headroomChip}){
             if(chip==null)continue;
             chip.setTextColor(nowOnArt?Color.WHITE:palette.accent);
             chip.setBackground(LauncherTheme.rounded(this,nowOnArt?0x2effffff:(palette.accent&0x00ffffff)|0x1c000000,12,0,0));
@@ -699,6 +702,16 @@ public final class MusicActivity extends Activity {
         if(!"Custom".equals(profile.preset()))getSharedPreferences("equalizer_profile",MODE_PRIVATE).edit().putString("preset","Custom").apply();
         soundChanged(profile);
     }
+    private static final float[] EVEN_STEPS={0,.5f,1f};
+    private static final String[] EVEN_NAMES={"OFF","LIGHT","MEDIUM"};
+    private static int evenStep(float even){int best=0;for(int i=1;i<EVEN_STEPS.length;i++)if(Math.abs(EVEN_STEPS[i]-even)<Math.abs(EVEN_STEPS[best]-even))best=i;return best;}
+    /** Even out is a slider in the equalizer; here one tap steps Off, Light, Medium and back. */
+    private void cycleEven(){
+        EqualizerProfile profile=new EqualizerProfile(this);
+        if(!profile.enabled()){startActivity(new Intent(this,EqualizerActivity.class));return;}
+        profile.setEven(EVEN_STEPS[(evenStep(profile.even())+1)%EVEN_STEPS.length]);
+        soundChanged(profile);
+    }
     private void toggleHeadroom(){
         EqualizerProfile profile=new EqualizerProfile(this);
         if(!profile.enabled()){startActivity(new Intent(this,EqualizerActivity.class));return;}
@@ -712,12 +725,14 @@ public final class MusicActivity extends Activity {
         renderSoundChips();
     }
     private void renderSoundChips(){
-        if(bassChip==null||headroomChip==null)return;
+        if(bassChip==null||headroomChip==null||evenChip==null)return;
         EqualizerProfile profile=new EqualizerProfile(this);
         boolean on=profile.enabled();
         String bass=!on?"BASS · EQ OFF":profile.bass()==0?"BASS OFF":String.format(java.util.Locale.US,"BASS +%.0f DB",profile.bass());
         updateText(bassChip,bass);
         bassChip.setContentDescription(!on?"Bass. The equalizer is off. Tap to open it.":profile.bass()==0?"Bass off. Tap to change.":"Bass plus "+Math.round(profile.bass())+" decibels. Tap to change.");
+        updateText(evenChip,!on?"EVEN · EQ OFF":"EVEN "+EVEN_NAMES[evenStep(profile.even())]);
+        evenChip.setContentDescription(!on?"Even out quiet parts. The equalizer is off. Tap to open it.":"Even out quiet parts "+EVEN_NAMES[evenStep(profile.even())].toLowerCase(java.util.Locale.ROOT)+". Tap to change.");
         updateText(headroomChip,!on?"HEADROOM · EQ OFF":profile.headroom()?"HEADROOM ON":"HEADROOM OFF");
         headroomChip.setContentDescription(!on?"Headroom. The equalizer is off. Tap to open it.":profile.headroom()?"Headroom on. Tap to turn off.":"Headroom off, loud tracks may clip. Tap to turn on.");
     }

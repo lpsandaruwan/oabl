@@ -2,6 +2,13 @@
 
 Current build: open the dock **Equalizer** shortcut, **Launcher Settings → Audio equalizer**, or a compatible player's Android audio-effect control-panel action.
 
+**Launcher 0.1.124 (13 November 2026): Even out quiet parts (OABL Music).**
+- **Why:** "Meant to Live" opens 8.4 dB below its body (intro -18.1 dB, body -9.7 dB), and the 1.3-2.5 dB mid cut in the saved curve took the intro to -20.2 dB. Nothing in the effects was masking it (left and right of the intro are independent, correlation 0; the effects pass it at -18.1 dB in and out), so this is the master plus road noise.
+- **What it does:** a slow leveler ahead of the exciter and bass. It reads the song's average level (150 ms to rise, 400 ms to fall, both channels together so the stereo image stays put), pulls it toward -13 dBFS, lifting quiet parts by the whole distance and easing loud ones by half of it, never more than 8 dB times the strength, and fading out below -42 dB so fades and gaps aren't lifted into hiss. Peaks still go through the soft limiter.
+- **Controls:** a slider on the Effects tab (EVEN OUT · OABL MUSIC) and an EVEN chip on the player that steps Off, Light (50 %), Medium (100 %). Off by default. Like Headroom it is not part of a preset.
+- **Measured on that file, 2 s into the intro and 2 s into the body:** Off -18.1 / -9.2 dB; Light -16.6 / -10.7; Medium -15.0 / -12.1. The gap goes from 8.9 dB to 5.9 and 2.9. The whole song gets a little quieter at Medium, so the volume goes up a touch.
+- **Not for YouTube and other apps:** it lives in OABL Music's own chain, like Bass and the exciter.
+
 **Launcher 0.1.123 (12 November 2026): the equalizer also plays on YouTube, Chrome and other apps on the box.**
 - **The gap:** the equalizer attaches to audio sessions that a player announces through Android's audio-effect contract. OABL Music does, YouTube and browsers don't, so they played flat.
 - **The fix, on the box:** `oabl-box-tune` (root) reads the audio service every 2 s while the equalizer is on, takes the playing media sessions of other apps (usage media or game, not voice, calls, navigation or system sounds, not OABL Music) and announces each to the launcher's session receiver as a cooperating player would, then closes it when the player goes. The launcher is unchanged apart from a line in the Audio source dialog.

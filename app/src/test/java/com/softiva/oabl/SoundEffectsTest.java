@@ -223,4 +223,83 @@ public class SoundEffectsTest {
         assertEquals(0, out[0], 0);
         assertTrue(out[delay] > .5f);
     }
+
+    // ---- Even out ----
+
+    private static double rms(float[] x, int from, int to) {
+        double sum = 0;
+        for (int i = from; i < to; i++) sum += (double) x[i] * x[i];
+        return Math.sqrt(sum / (to - from));
+    }
+
+    private static double db(double ratio) { return 20 * Math.log10(ratio); }
+
+    /** A quiet passage (first 4 s) then a loud one (next 4 s), both stereo 220 Hz sines. */
+    private static float[] quietThenLoud(SoundEffects.Settings settings, double quiet, double loud) {
+        SoundEffects.Chain chain = new SoundEffects.Chain(2, RATE);
+        chain.configure(settings);
+        float[] out = new float[RATE * 8];
+        float[] frame = new float[2];
+        for (int i = 0; i < out.length; i++) {
+            double a = i < RATE * 4 ? quiet : loud;
+            frame[0] = frame[1] = (float) (a * Math.sin(2 * Math.PI * 220 * i / RATE));
+            chain.process(frame, true);
+            out[i] = frame[0];
+        }
+        return out;
+    }
+
+    @Test public void evenOutOffChangesNothing() {
+        float[] flat = quietThenLoud(new SoundEffects.Settings(0, 3500, 0, false, 0), .03, .5);
+        double quiet = db(rms(flat, RATE * 2, RATE * 4) / (.03 / Math.sqrt(2)));
+        assertEquals(0, quiet, 0.05);
+    }
+
+    @Test public void evenOutLiftsAQuietPassageAndEasesALoudOne() {
+        float[] out = quietThenLoud(new SoundEffects.Settings(0, 3500, 0, false, .7f), .03, .5);
+        double lift = db(rms(out, RATE * 3, RATE * 4) / (.03 / Math.sqrt(2)));
+        double drop = db(rms(out, RATE * 7, RATE * 8) / (.5 / Math.sqrt(2)));
+        assertTrue("quiet part lifted " + lift, lift > 3);
+        assertTrue("loud part eased " + drop, drop < -1);
+        // The gap between the two shrinks, never reverses.
+        double before = db(.5 / .03), after = db(rms(out, RATE * 7, RATE * 8) / rms(out, RATE * 3, RATE * 4));
+        assertTrue("gap " + before + " -> " + after, after > 3 && after < before - 3);
+    }
+
+    @Test public void evenOutKeepsItsLimitsAndFadesOutNearSilence() {
+        float s = .7f;
+        double limit = SoundEffects.EVEN_LIMIT_DB * s;
+        assertEquals(0, SoundEffects.evenGainDb(SoundEffects.EVEN_TARGET_DB, s), 1e-6);   // at the target: nothing
+        assertEquals((SoundEffects.EVEN_TARGET_DB + 17) * SoundEffects.EVEN_UP * s, SoundEffects.evenGainDb(-17, s), 1e-4); // quiet: up, by its share
+        assertEquals(limit, SoundEffects.evenGainDb(-40, s), 1e-4);                        // far below: the limit
+        assertEquals((SoundEffects.EVEN_TARGET_DB + 5) * SoundEffects.EVEN_DOWN * s, SoundEffects.evenGainDb(-5, s), 1e-4); // loud: down, less
+        assertTrue(Math.abs(SoundEffects.evenGainDb(-9, s)) < SoundEffects.evenGainDb(-17, s));       // easing is gentler than lifting
+        assertEquals(0, SoundEffects.evenGainDb(-60, 1f), 1e-9);                           // near silence: nothing
+        assertEquals(0, SoundEffects.evenGainDb(-80, 1f), 1e-9);
+        assertEquals(0, SoundEffects.evenGainDb(-30, 0f), 1e-9);                           // off
+    }
+
+    @Test public void evenOutStaysInsideFullScaleAndKeepsTheStereoImage() {
+        SoundEffects.Chain chain = new SoundEffects.Chain(2, RATE);
+        chain.configure(new SoundEffects.Settings(0, 3500, 0, false, 1f));
+        float[] frame = new float[2];
+        double peak = 0, left = 0, right = 0;
+        for (int i = 0; i < RATE * 3; i++) {
+            double a = i < RATE ? .02 : .95;
+            frame[0] = (float) (a * Math.sin(2 * Math.PI * 330 * i / RATE));
+            frame[1] = frame[0] * .5f;
+            chain.process(frame, true);
+            peak = Math.max(peak, Math.max(Math.abs(frame[0]), Math.abs(frame[1])));
+            if (i > RATE * 2) { left += frame[0] * frame[0]; right += frame[1] * frame[1]; }
+        }
+        assertTrue("peak " + peak, peak <= 1.0);
+        assertEquals("one gain for both channels", .5, Math.sqrt(right / left), 0.01);
+    }
+
+    @Test public void evenOutIsPartOfTheSettings() {
+        SoundEffects.Settings on = new SoundEffects.Settings(0, 3500, 0, true, .35f);
+        assertTrue(on.active());
+        assertFalse(on.equals(new SoundEffects.Settings(0, 3500, 0, true, 0)));
+        assertFalse(new SoundEffects.Settings(0, 3500, 0, true, 0).active());
+    }
 }
