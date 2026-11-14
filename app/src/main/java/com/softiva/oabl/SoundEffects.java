@@ -8,7 +8,8 @@ package com.softiva.oabl;
  *
  * The <b>exciter</b> is OABL Music's original effect. Each channel's band from the chosen frequency
  * (1.5 kHz by default) up to 6 kHz is driven through a soft clipper, which makes many harmonics of it,
- * and only what lands at 10 kHz and above is mixed back in, for air. The clipper runs at four times the
+ * and only what lands above the chosen "harmonics from" frequency (8 kHz by default) is mixed back in,
+ * for air. The clipper runs at four times the
  * sample rate so those harmonics don't fold back down as fizz.
  *
  * The layout is the classic Aphex Aural Exciter one: the dry signal passes untouched, and a side
@@ -48,10 +49,12 @@ final class SoundEffects {
     static final float EXCITER_MAX = 1f;
     static final float[] EXCITER_HZ = {1500, 2500, 3500, 5000};
     /**
-     * Only what lands at or above this is added: the exciter is air, not body. A 4th-order high-pass keeps
-     * the part of the generated harmonics at 10 kHz and up (-3 dB at 10 kHz, -12 dB at 8 kHz).
+     * Only what lands above the "harmonics from" frequency is added: the exciter is air, not body.
+     * A 4th-order high-pass keeps the part of the generated harmonics above it (-3 dB at the corner, about
+     * -12 dB at 0.8 times it). The choices, and the default.
      */
-    static final double EXCITER_AIR_HZ = 10000;
+    static final float[] AIR_HZ = {6000, 8000, 10000, 12000};
+    static final float AIR_DEFAULT_HZ = 8000;
     /** The band the harmonics are made from ends here: above it the 2nd harmonic alone already lands in the air. */
     static final double EXCITER_SOURCE_TOP_HZ = 6000;
     /** Harmonic level, in units of the band's own average level, at full exciter. */
@@ -114,7 +117,7 @@ final class SoundEffects {
     /** What to run: the exciter's amount (0..1) and where it starts, and the bass boost in dB. */
     static final class Settings {
         static final Settings OFF = new Settings(0, 3500);
-        final float exciter, exciterHz, bassDb, even;
+        final float exciter, exciterHz, bassDb, even, airHz;
         final boolean headroom;
 
         Settings(float exciter, float exciterHz) { this(exciter, exciterHz, 0); }
@@ -124,7 +127,12 @@ final class SoundEffects {
         Settings(float exciter, float exciterHz, float bassDb, boolean headroom) { this(exciter, exciterHz, bassDb, headroom, 0); }
 
         Settings(float exciter, float exciterHz, float bassDb, boolean headroom, float even) {
+            this(exciter, exciterHz, bassDb, headroom, even, AIR_DEFAULT_HZ);
+        }
+
+        Settings(float exciter, float exciterHz, float bassDb, boolean headroom, float even, float airHz) {
             this.headroom = headroom;
+            this.airHz = nearest(AIR_HZ, airHz);
             this.even = unit(even);
             this.exciter = unit(exciter);
             this.exciterHz = nearest(EXCITER_HZ, exciterHz);
@@ -143,14 +151,14 @@ final class SoundEffects {
         @Override public boolean equals(Object other) {
             if (!(other instanceof Settings)) return false;
             Settings o = (Settings) other;
-            return exciter == o.exciter && exciterHz == o.exciterHz && bassDb == o.bassDb && headroom == o.headroom && even == o.even;
+            return exciter == o.exciter && exciterHz == o.exciterHz && bassDb == o.bassDb && headroom == o.headroom && even == o.even && airHz == o.airHz;
         }
 
         @Override public int hashCode() {
-            return 31 * (31 * (31 * (31 * Float.hashCode(exciter) + Float.hashCode(exciterHz)) + Float.hashCode(bassDb)) + Boolean.hashCode(headroom)) + Float.hashCode(even);
+            return 31 * (31 * (31 * (31 * (31 * Float.hashCode(exciter) + Float.hashCode(exciterHz)) + Float.hashCode(bassDb)) + Boolean.hashCode(headroom)) + Float.hashCode(even)) + Float.hashCode(airHz);
         }
 
-        @Override public String toString() { return exciter + "/" + exciterHz + "/" + bassDb + "/" + headroom + "/" + even; }
+        @Override public String toString() { return exciter + "/" + exciterHz + "/" + bassDb + "/" + headroom + "/" + even + "/" + airHz; }
     }
 
     static int index(float[] choices, float value) {
@@ -245,16 +253,23 @@ final class SoundEffects {
         private final Biquad upA = new Biquad(), upB = new Biquad(), hpA = new Biquad(), hpB = new Biquad(),
                 lpA = new Biquad(), lpB = new Biquad();
 
+        private final double fast;
+
         Air(double rate) {
-            double fast = rate * AIR_OVERSAMPLE;
+            fast = rate * AIR_OVERSAMPLE;
             // Hold, then smooth: the images of a hold sit at the original rate, far above the 6 kHz band.
             upA.lowPass(8000, Q1, fast);
             upB.lowPass(8000, Q2, fast);
-            hpA.highPass(EXCITER_AIR_HZ, Q1, fast);
-            hpB.highPass(EXCITER_AIR_HZ, Q2, fast);
+            keepFrom(AIR_DEFAULT_HZ);
             double top = Math.min(16000, rate * .36);
             lpA.lowPass(top, Q1, fast);
             lpB.lowPass(top, Q2, fast);
+        }
+
+        /** Where the air starts: the high-pass corner. Filter memories are kept, so a change mid-song doesn't click. */
+        void keepFrom(double hz) {
+            hpA.highPass(hz, Q1, fast);
+            hpB.highPass(hz, Q2, fast);
         }
 
         /** {@code u}: the band divided by its average level (held within ±2). Returns the air, in units of that level. */
@@ -404,6 +419,7 @@ final class SoundEffects {
             double top = Math.min(rate * .20, EXCITER_SOURCE_TOP_HZ);
             for (int c = 0; c < channels; c++) {
                 start[c].highPass(next.exciterHz, .7071, rate);
+                air[c].keepFrom(next.airHz);
                 limitA[c].lowPass(top, Q1, rate);
                 limitB[c].lowPass(top, Q2, rate);
                 bass[c].peaking(BASS_HZ, BASS_Q, next.bassDb * BASS_BELL, rate);

@@ -470,6 +470,10 @@ final class EqualizerProfile {
     float even() { return clamp(preferences.getFloat("fx_even", 0), 0, 1); }
     void setEven(float value) { preferences.edit().putFloat("fx_even", clamp(value, 0, 1)).apply(); }
 
+    /** Where the exciter's harmonics start to be played, in Hz (6, 8, 10 or 12 kHz; 8 kHz default). Global, not part of a preset. */
+    float airHz() { return SoundEffects.nearest(SoundEffects.AIR_HZ, preferences.getFloat("fx_air_hz", SoundEffects.AIR_DEFAULT_HZ)); }
+    void setAirHz(float value) { preferences.edit().putFloat("fx_air_hz", SoundEffects.nearest(SoundEffects.AIR_HZ, value)).apply(); }
+
     float[] effects() { return new float[]{exciter(), exciterHz(), bass()}; }
     void setEffects(float[] values) {
         if (values == null || values.length != EFFECTS) return;
@@ -488,7 +492,7 @@ final class EqualizerProfile {
 
     /** What OABL Music should run: the exciter and bass while the equalizer is on, nothing while it is off. */
     SoundEffects.Settings activeEffects() {
-        return enabled() ? new SoundEffects.Settings(exciter(), exciterHz(), bass(), headroom(), even()) : SoundEffects.Settings.OFF;
+        return enabled() ? new SoundEffects.Settings(exciter(), exciterHz(), bass(), headroom(), even(), airHz()) : SoundEffects.Settings.OFF;
     }
 
     // ---- output ----

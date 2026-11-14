@@ -49,9 +49,9 @@ public class SoundEffectsTest {
         assertTrue("20 kHz added: " + level(out, 20000), level(out, 20000) > dry * .01);
     }
 
-    /** The harmonics are air: nothing is added below 10 kHz, so a 2 kHz note's overtones at 4, 6 and 8 kHz are left out. */
-    @Test public void theExciterAddsOnlyWhatLandsAtTenKilohertzAndAbove() {
-        SoundEffects.Settings s = new SoundEffects.Settings(1, 1500);
+    /** The harmonics are air: with "from" at 10 kHz, a 2 kHz note's overtones at 4, 6 and 8 kHz are left out. */
+    @Test public void theExciterAddsOnlyWhatLandsAboveTheChosenFrequency() {
+        SoundEffects.Settings s = new SoundEffects.Settings(1, 1500, 0, true, 0, 10000);
         float[] out = run(s, 2000, .5);
         double dry = .5 * s.preGain();
         assertTrue("2 kHz kept: " + level(out, 2000), level(out, 2000) > dry * .95);
@@ -61,6 +61,18 @@ public class SoundEffectsTest {
         // 2 kHz makes overtones at 10, 14, 18 kHz (odd) and 12, 16, 20 kHz (even): the air is there.
         double air = level(out, 10000) + level(out, 12000) + level(out, 14000) + level(out, 16000);
         assertTrue("air " + air, air > dry * .08);
+    }
+
+    /** Harmonics from defaults to 8 kHz, is one of four choices, and moves where the air starts. */
+    @Test public void harmonicsFromIsConfigurableAndDefaultsToEightKilohertz() {
+        assertEquals(8000f, new SoundEffects.Settings(1, 1500).airHz, 0f);
+        assertEquals(10000f, new SoundEffects.Settings(1, 1500, 0, true, 0, 9400).airHz, 0f);   // snaps to what is offered
+        float[] low = run(new SoundEffects.Settings(1, 1500, 0, true, 0, 6000), 2000, .5);
+        float[] high = run(new SoundEffects.Settings(1, 1500, 0, true, 0, 12000), 2000, .5);
+        double lowBand = level(low, 6000) + level(low, 8000), highBand = level(high, 6000) + level(high, 8000);
+        assertTrue("6/8 kHz overtones: from 6 kHz " + lowBand + " vs from 12 kHz " + highBand, lowBand > highBand * 3);
+        double lowTop = level(low, 14000) + level(low, 16000), highTop = level(high, 14000) + level(high, 16000);
+        assertTrue("above both corners the two agree: " + lowTop + " vs " + highTop, Math.abs(lowTop - highTop) < .25 * Math.max(lowTop, highTop));
     }
 
     /** Squaring content above a quarter of the sample rate folds its 2nd harmonic back down as off-pitch fizz. */
@@ -82,7 +94,7 @@ public class SoundEffectsTest {
 
     /** Two notes must not leave a difference tone in the mids (2 + 3 kHz would give 1 kHz). */
     @Test public void theExciterAddsNoDifferenceTonesBelowItsBand() {
-        SoundEffects.Settings s = new SoundEffects.Settings(1, 1500);
+        SoundEffects.Settings s = new SoundEffects.Settings(1, 1500, 0, true, 0, 10000);
         SoundEffects.Chain chain = new SoundEffects.Chain(2, RATE);
         chain.configure(s);
         float[] out = new float[RATE * 2];

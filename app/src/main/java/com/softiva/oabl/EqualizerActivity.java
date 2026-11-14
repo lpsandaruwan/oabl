@@ -50,7 +50,7 @@ public final class EqualizerActivity extends Activity {
     private SharedPreferences ui;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private TextView statusChip, preampLabel, source, linkSelector, gainLabel, normalizeSelector, bandLabel, bandGain,
-            help, exciterValue, exciterHzSelector, bassValue, evenValue, headroomValue, compare;
+            help, exciterValue, exciterHzSelector, airHzSelector, bassValue, evenValue, headroomValue, compare;
     private Switch headroomSwitch;
     private EqualizerCurveView curve;
     private EqualizerSlidersView sliders;
@@ -362,6 +362,7 @@ public final class EqualizerActivity extends Activity {
         // Effects: the exciter, which runs in OABL Music.
         exciterValue = text("", 15, palette.ink);
         exciterHzSelector = text("", 16, palette.ink);
+        airHzSelector = text("", 16, palette.ink);
         bassValue = text("", 15, palette.ink);
         evenValue = text("", 15, palette.ink);
         LinearLayout sound = row();
@@ -371,8 +372,10 @@ public final class EqualizerActivity extends Activity {
                 p -> profile.setEven(p / 20f)), 2, 10, panelHeight(compact));
         weighted(sound, sliderCard("EXCITER · OABL MUSIC", exciterValue, "eq_exciter", 20, Math.round(profile.exciter() * 20),
                 p -> { profile.setExciter(p / 20f); markCustom(); }), 2, 10, panelHeight(compact));
-        weighted(sound, control("EXCITER FROM", exciterHzSelector, () -> chooseHz("Exciter makes its harmonics (played at 10 kHz and up) from", SoundEffects.EXCITER_HZ,
+        weighted(sound, control("EXCITER BAND FROM", exciterHzSelector, () -> chooseHz("The exciter takes its band from", SoundEffects.EXCITER_HZ,
                 profile.exciterHz(), profile::setExciterHz), "eq_exciter_hz"), 1, 10, panelHeight(compact));
+        weighted(sound, control("HARMONICS FROM", airHzSelector, () -> chooseHz("The exciter plays its harmonics above", SoundEffects.AIR_HZ,
+                profile.airHz(), profile::setAirHz), "eq_air_hz"), 1, 10, panelHeight(compact));
         if (compact) {
             // Two readable controls, side by side or one to a row in the narrowest panes.
             LinearLayout shaped = column();
@@ -704,6 +707,7 @@ public final class EqualizerActivity extends Activity {
         update(evenValue, profile.even() == 0 ? "Off" : percent(profile.even()));
         update(bassValue, profile.bass() == 0 ? "Off" : String.format(java.util.Locale.US, "+%.1f dB", profile.bass()));
         update(exciterHzSelector, EqualizerProfile.hzLabel(profile.exciterHz()).replace(" k", " kHz"));
+        update(airHzSelector, EqualizerProfile.hzLabel(profile.airHz()).replace(" k", " kHz"));
         // A preset or undo can change the effects under the sliders.
         syncBar("eq_exciter", profile.exciter());
         syncBar("eq_bass", profile.bass() / SoundEffects.BASS_MAX_DB);
