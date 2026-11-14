@@ -50,7 +50,7 @@ public final class EqualizerActivity extends Activity {
     private SharedPreferences ui;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private TextView statusChip, preampLabel, source, linkSelector, gainLabel, normalizeSelector, bandLabel, bandGain,
-            help, exciterValue, exciterHzSelector, airHzSelector, bassValue, evenValue, headroomValue, compare;
+            help, exciterValue, frequenciesBass, frequenciesExciter, bassValue, evenValue, headroomValue, compare;
     private Switch headroomSwitch;
     private EqualizerCurveView curve;
     private EqualizerSlidersView sliders;
@@ -361,21 +361,18 @@ public final class EqualizerActivity extends Activity {
 
         // Effects: the exciter, which runs in OABL Music.
         exciterValue = text("", 15, palette.ink);
-        exciterHzSelector = text("", 16, palette.ink);
-        airHzSelector = text("", 16, palette.ink);
+        frequenciesBass = text("", 14, palette.ink);
+        frequenciesExciter = text("", 14, palette.ink);
         bassValue = text("", 15, palette.ink);
         evenValue = text("", 15, palette.ink);
         LinearLayout sound = row();
         weighted(sound, sliderCard("BASS · OABL MUSIC", bassValue, "eq_bass", 20, Math.round(profile.bass() * 2),
                 p -> { profile.setBass(p / 2f); markCustom(); }), 2, 0, panelHeight(compact));
-        weighted(sound, sliderCard("EVEN OUT · OABL MUSIC", evenValue, "eq_even", 20, Math.round(profile.even() * 20),
-                p -> profile.setEven(p / 20f)), 2, 10, panelHeight(compact));
         weighted(sound, sliderCard("EXCITER · OABL MUSIC", exciterValue, "eq_exciter", 20, Math.round(profile.exciter() * 20),
                 p -> { profile.setExciter(p / 20f); markCustom(); }), 2, 10, panelHeight(compact));
-        weighted(sound, control("EXCITER BAND FROM", exciterHzSelector, () -> chooseHz("The exciter takes its band from", SoundEffects.EXCITER_HZ,
-                profile.exciterHz(), profile::setExciterHz), "eq_exciter_hz"), 1, 10, panelHeight(compact));
-        weighted(sound, control("HARMONICS FROM", airHzSelector, () -> chooseHz("The exciter plays its harmonics above", SoundEffects.AIR_HZ,
-                profile.airHz(), profile::setAirHz), "eq_air_hz"), 1, 10, panelHeight(compact));
+        weighted(sound, sliderCard("EVEN OUT · OABL MUSIC", evenValue, "eq_even", 20, Math.round(profile.even() * 20),
+                p -> profile.setEven(p / 20f)), 2, 10, panelHeight(compact));
+        weighted(sound, frequenciesCard(), 2, 10, panelHeight(compact));
         if (compact) {
             // Two readable controls, side by side or one to a row in the narrowest panes.
             LinearLayout shaped = column();
@@ -706,8 +703,8 @@ public final class EqualizerActivity extends Activity {
         update(exciterValue, percent(profile.exciter()));
         update(evenValue, profile.even() == 0 ? "Off" : percent(profile.even()));
         update(bassValue, profile.bass() == 0 ? "Off" : String.format(java.util.Locale.US, "+%.1f dB", profile.bass()));
-        update(exciterHzSelector, EqualizerProfile.hzLabel(profile.exciterHz()).replace(" k", " kHz"));
-        update(airHzSelector, EqualizerProfile.hzLabel(profile.airHz()).replace(" k", " kHz"));
+        update(frequenciesBass, "Bass  " + Math.round(profile.bassBandHz()) + " → " + Math.round(profile.bassAirHz()) + " Hz");
+        update(frequenciesExciter, "Exciter  " + khz(profile.exciterHz()) + " → " + khz(profile.airHz()));
         // A preset or undo can change the effects under the sliders.
         syncBar("eq_exciter", profile.exciter());
         syncBar("eq_bass", profile.bass() / SoundEffects.BASS_MAX_DB);
@@ -1059,6 +1056,57 @@ public final class EqualizerActivity extends Activity {
         view.setTextColor(primary || active ? (palette.light ? 0xffffffff : palette.root) : palette.ink);
         view.setBackground(new RippleDrawable(ColorStateList.valueOf(palette.light ? 0x22142e38 : 0x33ffffff),
                 LauncherTheme.rounded(this, fill, 20, 0, 0), null));
+    }
+
+    private static String khz(float hz) { return EqualizerProfile.hzLabel(hz).replace(" k", " kHz"); }
+
+    /** Band and harmonics frequencies of the bass and the exciter in one card; a tap opens the four choices. */
+    private LinearLayout frequenciesCard() {
+        LinearLayout card = row();
+        card.setTag("eq_frequencies");
+        card.setPadding(dp(16), 0, dp(8), 0);
+        card.setBackground(LauncherTheme.tile(this, palette));
+        LinearLayout labels = column();
+        labels.setGravity(Gravity.CENTER_VERTICAL);
+        TextView title = text("BAND → HARMONICS", 10, palette.muted);
+        title.setSingleLine(true);
+        title.setEllipsize(TextUtils.TruncateAt.END);
+        for (TextView line : new TextView[]{frequenciesBass, frequenciesExciter}) {
+            line.setSingleLine(true);
+            line.setEllipsize(TextUtils.TruncateAt.END);
+            line.setTypeface(null, Typeface.BOLD);
+            line.setFontFeatureSettings("tnum");
+        }
+        labels.addView(title);
+        space(labels, 4);
+        labels.addView(frequenciesBass);
+        space(labels, 2);
+        labels.addView(frequenciesExciter);
+        card.addView(labels, new LinearLayout.LayoutParams(0, -1, 1));
+        MusicIconView arrow = icon(MusicIconView.Icon.DOWN, "", () -> { }, null);
+        arrow.setClickable(false);
+        arrow.setFocusable(false);
+        arrow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        card.addView(arrow, lp(32, 48));
+        card.setFocusable(true);
+        card.setOnClickListener(v -> chooseFrequency());
+        return card;
+    }
+
+    private void chooseFrequency() {
+        String[] names = {
+                "Bass: band from  ·  " + Math.round(profile.bassBandHz()) + " Hz",
+                "Bass: harmonics above  ·  " + Math.round(profile.bassAirHz()) + " Hz",
+                "Exciter: band from  ·  " + khz(profile.exciterHz()),
+                "Exciter: harmonics above  ·  " + khz(profile.airHz())};
+        dialog().setTitle("Bass and exciter frequencies").setItems(names, (d, i) -> {
+            switch (i) {
+                case 0: chooseHz("The bass takes its band from", SoundEffects.BASS_BAND_HZ, profile.bassBandHz(), profile::setBassBandHz); break;
+                case 1: chooseHz("The bass plays its harmonics above", SoundEffects.BASS_AIR_HZ, profile.bassAirHz(), profile::setBassAirHz); break;
+                case 2: chooseHz("The exciter takes its band from", SoundEffects.EXCITER_HZ, profile.exciterHz(), profile::setExciterHz); break;
+                default: chooseHz("The exciter plays its harmonics above", SoundEffects.AIR_HZ, profile.airHz(), profile::setAirHz); break;
+            }
+        }).setNegativeButton("Cancel", null).show();
     }
 
     private LinearLayout control(String label, TextView value, Runnable action, String tag) {

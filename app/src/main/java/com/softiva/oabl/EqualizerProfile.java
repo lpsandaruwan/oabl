@@ -474,6 +474,12 @@ final class EqualizerProfile {
     float airHz() { return SoundEffects.nearest(SoundEffects.AIR_HZ, preferences.getFloat("fx_air_hz", SoundEffects.AIR_DEFAULT_HZ)); }
     void setAirHz(float value) { preferences.edit().putFloat("fx_air_hz", SoundEffects.nearest(SoundEffects.AIR_HZ, value)).apply(); }
 
+    /** Bass: the low edge of the band its overtones are made from (30, 40, 50 or 60 Hz) and where they start to be played (80, 100, 120 or 150 Hz). Global. */
+    float bassBandHz() { return SoundEffects.nearest(SoundEffects.BASS_BAND_HZ, preferences.getFloat("fx_bass_band_hz", SoundEffects.BASS_BAND_DEFAULT_HZ)); }
+    void setBassBandHz(float value) { preferences.edit().putFloat("fx_bass_band_hz", SoundEffects.nearest(SoundEffects.BASS_BAND_HZ, value)).apply(); }
+    float bassAirHz() { return SoundEffects.nearest(SoundEffects.BASS_AIR_HZ, preferences.getFloat("fx_bass_air_hz", SoundEffects.BASS_AIR_DEFAULT_HZ)); }
+    void setBassAirHz(float value) { preferences.edit().putFloat("fx_bass_air_hz", SoundEffects.nearest(SoundEffects.BASS_AIR_HZ, value)).apply(); }
+
     float[] effects() { return new float[]{exciter(), exciterHz(), bass()}; }
     void setEffects(float[] values) {
         if (values == null || values.length != EFFECTS) return;
@@ -492,7 +498,7 @@ final class EqualizerProfile {
 
     /** What OABL Music should run: the exciter and bass while the equalizer is on, nothing while it is off. */
     SoundEffects.Settings activeEffects() {
-        return enabled() ? new SoundEffects.Settings(exciter(), exciterHz(), bass(), headroom(), even(), airHz()) : SoundEffects.Settings.OFF;
+        return enabled() ? new SoundEffects.Settings(exciter(), exciterHz(), bass(), headroom(), even(), airHz(), bassBandHz(), bassAirHz()) : SoundEffects.Settings.OFF;
     }
 
     // ---- output ----

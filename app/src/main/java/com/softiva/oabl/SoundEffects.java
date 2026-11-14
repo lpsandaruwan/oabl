@@ -98,7 +98,15 @@ final class SoundEffects {
     /** How much of the slider's boost the bell gives; the harmonics do the rest. */
     static final float BASS_BELL = .6f;
     /** The band turned into harmonics, and what is kept of them: nothing near the fundamentals, nothing that sounds like buzz. */
-    static final double HARMONIC_LOW_HZ = 40, HARMONIC_HIGH_HZ = 90, HARMONIC_KEEP_HZ = 100, HARMONIC_TOP_HZ = 500;
+    static final double HARMONIC_HIGH_HZ = 90, HARMONIC_TOP_HZ = 500;
+    /**
+     * The same two choices the exciter has. "Bass band from": the low edge of the band the harmonics are
+     * made from (it ends at 90 Hz). "Bass harmonics from": the high-pass that keeps only the overtones
+     * above it (-3 dB at the corner). Defaults are what 0.1.126 and earlier had: 40 Hz and 100 Hz.
+     */
+    static final float[] BASS_BAND_HZ = {30, 40, 50, 60};
+    static final float[] BASS_AIR_HZ = {80, 100, 120, 150};
+    static final float BASS_BAND_DEFAULT_HZ = 40, BASS_AIR_DEFAULT_HZ = 100;
     /** Level of the harmonics against their band at full slider. */
     static final float HARMONIC_MAX = 1f;
     /** Falling 2nd to 4th, as an instrument's own overtones do. */
@@ -117,7 +125,7 @@ final class SoundEffects {
     /** What to run: the exciter's amount (0..1) and where it starts, and the bass boost in dB. */
     static final class Settings {
         static final Settings OFF = new Settings(0, 3500);
-        final float exciter, exciterHz, bassDb, even, airHz;
+        final float exciter, exciterHz, bassDb, even, airHz, bassBandHz, bassAirHz;
         final boolean headroom;
 
         Settings(float exciter, float exciterHz) { this(exciter, exciterHz, 0); }
@@ -131,7 +139,14 @@ final class SoundEffects {
         }
 
         Settings(float exciter, float exciterHz, float bassDb, boolean headroom, float even, float airHz) {
+            this(exciter, exciterHz, bassDb, headroom, even, airHz, BASS_BAND_DEFAULT_HZ, BASS_AIR_DEFAULT_HZ);
+        }
+
+        Settings(float exciter, float exciterHz, float bassDb, boolean headroom, float even, float airHz,
+                 float bassBandHz, float bassAirHz) {
             this.headroom = headroom;
+            this.bassBandHz = nearest(BASS_BAND_HZ, bassBandHz);
+            this.bassAirHz = nearest(BASS_AIR_HZ, bassAirHz);
             this.airHz = nearest(AIR_HZ, airHz);
             this.even = unit(even);
             this.exciter = unit(exciter);
@@ -151,14 +166,15 @@ final class SoundEffects {
         @Override public boolean equals(Object other) {
             if (!(other instanceof Settings)) return false;
             Settings o = (Settings) other;
-            return exciter == o.exciter && exciterHz == o.exciterHz && bassDb == o.bassDb && headroom == o.headroom && even == o.even && airHz == o.airHz;
+            return exciter == o.exciter && exciterHz == o.exciterHz && bassDb == o.bassDb && headroom == o.headroom && even == o.even && airHz == o.airHz
+                    && bassBandHz == o.bassBandHz && bassAirHz == o.bassAirHz;
         }
 
         @Override public int hashCode() {
-            return 31 * (31 * (31 * (31 * (31 * Float.hashCode(exciter) + Float.hashCode(exciterHz)) + Float.hashCode(bassDb)) + Boolean.hashCode(headroom)) + Float.hashCode(even)) + Float.hashCode(airHz);
+            return 31 * (31 * (31 * (31 * (31 * (31 * (31 * Float.hashCode(exciter) + Float.hashCode(exciterHz)) + Float.hashCode(bassDb)) + Boolean.hashCode(headroom)) + Float.hashCode(even)) + Float.hashCode(airHz)) + Float.hashCode(bassBandHz)) + Float.hashCode(bassAirHz);
         }
 
-        @Override public String toString() { return exciter + "/" + exciterHz + "/" + bassDb + "/" + headroom + "/" + even + "/" + airHz; }
+        @Override public String toString() { return exciter + "/" + exciterHz + "/" + bassDb + "/" + headroom + "/" + even + "/" + airHz + "/" + bassBandHz + "/" + bassAirHz; }
     }
 
     static int index(float[] choices, float value) {
@@ -380,11 +396,11 @@ final class SoundEffects {
             evenRelease = 1 - Math.exp(-1 / (EVEN_RELEASE_S * rate));
             evenSmoothing = 1 - Math.exp(-1 / (EVEN_GAIN_S * rate));
             harmonicDecay = Math.exp(-1 / (HARMONIC_RELEASE_S * rate));
-            harmonicLow.highPass(HARMONIC_LOW_HZ, .7071, rate);
+            harmonicLow.highPass(BASS_BAND_DEFAULT_HZ, .7071, rate);
             harmonicHighA.lowPass(HARMONIC_HIGH_HZ, Q1, rate);
             harmonicHighB.lowPass(HARMONIC_HIGH_HZ, Q2, rate);
-            harmonicKeepA.highPass(HARMONIC_KEEP_HZ, Q1, rate);
-            harmonicKeepB.highPass(HARMONIC_KEEP_HZ, Q2, rate);
+            harmonicKeepA.highPass(BASS_AIR_DEFAULT_HZ, Q1, rate);
+            harmonicKeepB.highPass(BASS_AIR_DEFAULT_HZ, Q2, rate);
             harmonicTop.lowPass(HARMONIC_TOP_HZ, .7071, rate);
             bass = new Biquad[this.channels];
             span = Math.max(1, (int) Math.round(BASS_LOOK_AHEAD_S * rate));
@@ -425,6 +441,9 @@ final class SoundEffects {
                 bass[c].peaking(BASS_HZ, BASS_Q, next.bassDb * BASS_BELL, rate);
             }
             harmonicWet = next.bassDb / BASS_MAX_DB * HARMONIC_MAX;
+            harmonicLow.highPass(next.bassBandHz, .7071, rate);
+            harmonicKeepA.highPass(next.bassAirHz, Q1, rate);
+            harmonicKeepB.highPass(next.bassAirHz, Q2, rate);
         }
 
         void reset() {

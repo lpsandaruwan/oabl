@@ -2,6 +2,11 @@
 
 Current build: open the dock **Equalizer** shortcut, **Launcher Settings → Audio equalizer**, or a compatible player's Android audio-effect control-panel action.
 
+**Launcher 0.1.128 (14 November 2026): the same two frequency choices for the Bass.**
+- **Bass band from** (30, 40, 50 or 60 Hz; 40 default): the low edge of the 40-90 Hz band the harmonics are made from. **Bass harmonics above** (80, 100, 120 or 150 Hz; 100 default): the high-pass that keeps only the overtones above it, the same job "Exciter harmonics" does at 8 kHz. The defaults are what 0.1.127 and earlier had, so nothing sounds different until you change them.
+- **UI:** one **BAND → HARMONICS** card on the Effects tab shows both pairs ("Bass 40 → 100 Hz", "Exciter 1.5 kHz → 8 kHz"); a tap opens the four choices. The four choices are global, like Headroom and Even out, not part of presets.
+- **Checked:** a 55 Hz note's 110 Hz harmonic is kept with "above 80 Hz" and cut to a third with "above 150 Hz"; a 35 Hz note makes 2.5 times the harmonics from a 30 Hz band as from 60 Hz. Not heard in the car.
+
 **Launcher 0.1.127 (14 November 2026): the exciter processes from 1.5 kHz and plays its harmonics above 8 kHz, with both frequencies configurable.**
 - **The request:** process the band from about 1.5 kHz, but play the harmonics high up (first said 10 kHz, then "maybe 8 kHz"), keep the band choice, and add a setting for where the harmonics start. 0.1.125 only moved the output filter, but a plain squarer on a 1.5-5 kHz band can never reach 10 kHz, so 0.1.126 replaced the generator.
 - **How it works:** the band from "Exciter band from" (1.5, 2.5, 3.5 or 5 kHz) to 6 kHz is divided by its own average level, taken to four times the sample rate and driven through an asymmetric soft clipper (odd and even overtones, many orders). A 4th-order high-pass at "Harmonics from" (6, **8**, 10 or 12 kHz) keeps only the air, and a low-pass at 16 kHz keeps it from folding back when the rate comes down. A 2 kHz note makes overtones at 4, 6, 8 ... 20 kHz; only those above the chosen corner come through (-3 dB at the corner, about -12 dB at 0.8 times it, so a loud overtone just below leaks a little).

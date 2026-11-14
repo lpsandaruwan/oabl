@@ -329,4 +329,32 @@ public class SoundEffectsTest {
         assertFalse(on.equals(new SoundEffects.Settings(0, 3500, 0, true, 0)));
         assertFalse(new SoundEffects.Settings(0, 3500, 0, true, 0).active());
     }
+
+    // ---- Bass band and harmonics frequencies ----
+
+    @Test public void bassFrequenciesDefaultToWhatTheyWereAndSnapToWhatIsOffered() {
+        SoundEffects.Settings s = new SoundEffects.Settings(0, 1500, 6);
+        assertEquals(40f, s.bassBandHz, 0f);
+        assertEquals(100f, s.bassAirHz, 0f);
+        SoundEffects.Settings custom = new SoundEffects.Settings(0, 1500, 6, true, 0, 8000, 52, 118);
+        assertEquals(50f, custom.bassBandHz, 0f);
+        assertEquals(120f, custom.bassAirHz, 0f);
+        assertFalse(s.equals(custom));
+    }
+
+    /** A 55 Hz note's harmonics sit at 110, 165 and 220 Hz: "harmonics above 150 Hz" leaves 110 out, "80 Hz" keeps it. */
+    @Test public void bassHarmonicsFromMovesWhereTheOvertonesStart() {
+        float[] low = run(new SoundEffects.Settings(0, 1500, 10, false, 0, 8000, 40, 80), 55, .4);
+        float[] high = run(new SoundEffects.Settings(0, 1500, 10, false, 0, 8000, 40, 150), 55, .4);
+        assertTrue("110 Hz: from 80 " + level(low, 110) + " vs from 150 " + level(high, 110), level(low, 110) > level(high, 110) * 2.5);
+        assertEquals("above both corners the two agree", level(low, 220), level(high, 220), .5 * level(low, 220) + .002);
+    }
+
+    /** The band's low edge: a 35 Hz note makes harmonics when the band starts at 30 Hz and almost none from 60 Hz. */
+    @Test public void bassBandFromMovesTheLowEdgeOfWhatIsMadeIntoHarmonics() {
+        float[] wide = run(new SoundEffects.Settings(0, 1500, 10, false, 0, 8000, 30, 80), 35, .4);
+        float[] narrow = run(new SoundEffects.Settings(0, 1500, 10, false, 0, 8000, 60, 80), 35, .4);
+        double wideHarmonics = level(wide, 105) + level(wide, 140), narrowHarmonics = level(narrow, 105) + level(narrow, 140);
+        assertTrue("from 30 Hz " + wideHarmonics + " vs from 60 Hz " + narrowHarmonics, wideHarmonics > narrowHarmonics * 2);
+    }
 }
