@@ -82,12 +82,12 @@ final class EqualizerProfile {
      * not heard it yet.
      */
     private static final float[][] PRESET_EFFECTS = {
-            {0, 3500, 0},
-            {.15f, 5000, 0},
-            {.1f, 5000, 0},
-            {0, 5000, 0},
-            {.2f, 3500, 0},
-            {0, 3500, 0},
+            {0, 1500, 0},
+            {.15f, 1500, 0},
+            {.1f, 1500, 0},
+            {0, 1500, 0},
+            {.2f, 1500, 0},
+            {0, 1500, 0},
     };
     /** Built-in presets before 0.1.108; a profile still naming one is shown as Custom. */
     private static final java.util.Set<String> RETIRED_PRESETS = new java.util.HashSet<>(java.util.Arrays.asList(
@@ -447,7 +447,17 @@ final class EqualizerProfile {
     static final int EFFECTS = 3;
     float exciter() { return clamp(preferences.getFloat("fx_exciter", 0), 0, 1); }
     void setExciter(float value) { preferences.edit().putFloat("fx_exciter", clamp(value, 0, 1)).apply(); }
-    float exciterHz() { return SoundEffects.nearest(SoundEffects.EXCITER_HZ, preferences.getFloat("fx_exciter_hz", 3500)); }
+    /**
+     * Where the exciter's harmonics are made from. 0.1.125 changed what the setting means (the harmonics now
+     * always land at 10 kHz and up), so an earlier choice is replaced once by 1.5 kHz, the new default.
+     */
+    float exciterHz() {
+        if (!preferences.getBoolean("fx_air", false)) {
+            preferences.edit().putFloat("fx_exciter_hz", 1500).putBoolean("fx_air", true).apply();
+            return 1500;
+        }
+        return SoundEffects.nearest(SoundEffects.EXCITER_HZ, preferences.getFloat("fx_exciter_hz", 1500));
+    }
     void setExciterHz(float value) { preferences.edit().putFloat("fx_exciter_hz", SoundEffects.nearest(SoundEffects.EXCITER_HZ, value)).apply(); }
     /** Xciter's Bass: the 40-90 Hz band's overtones plus a gentle bell, in dB (0 is off). */
     float bass() { return clamp(preferences.getFloat("fx_bass_db", 0), 0, SoundEffects.BASS_MAX_DB); }

@@ -371,7 +371,7 @@ public final class EqualizerActivity extends Activity {
                 p -> profile.setEven(p / 20f)), 2, 10, panelHeight(compact));
         weighted(sound, sliderCard("EXCITER · OABL MUSIC", exciterValue, "eq_exciter", 20, Math.round(profile.exciter() * 20),
                 p -> { profile.setExciter(p / 20f); markCustom(); }), 2, 10, panelHeight(compact));
-        weighted(sound, control("EXCITER FROM", exciterHzSelector, () -> chooseHz("Exciter adds harmonics from", SoundEffects.EXCITER_HZ,
+        weighted(sound, control("EXCITER FROM", exciterHzSelector, () -> chooseHz("Exciter makes its harmonics (played at 10 kHz and up) from", SoundEffects.EXCITER_HZ,
                 profile.exciterHz(), profile::setExciterHz), "eq_exciter_hz"), 1, 10, panelHeight(compact));
         if (compact) {
             // Two readable controls, side by side or one to a row in the narrowest panes.

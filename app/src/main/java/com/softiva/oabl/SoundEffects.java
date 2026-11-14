@@ -6,9 +6,10 @@ package com.softiva.oabl;
  * small speakers can play and the ear hears as the missing low note, on top of a gentler bell around
  * 80 Hz. Only a share of the boost is taken off the whole song, and what it adds eases off for a peak.
  *
- * The <b>exciter</b> is OABL Music's original effect. Each channel's top end above the chosen
- * frequency gets new even harmonics made from it, and what lands at 10 kHz and above is mixed
- * back in, for air.
+ * The <b>exciter</b> is OABL Music's original effect. Each channel's band from the chosen frequency
+ * (1.5 kHz by default) up to 6 kHz is driven through a soft clipper, which makes many harmonics of it,
+ * and only what lands at 10 kHz and above is mixed back in, for air. The clipper runs at four times the
+ * sample rate so those harmonics don't fold back down as fizz.
  *
  * The layout is the classic Aphex Aural Exciter one: the dry signal passes untouched, and a side
  * chain (a tunable high-pass, then a harmonic generator) is mixed back in at a low level.
@@ -45,26 +46,28 @@ final class SoundEffects {
     static final float KNEE = 0.9f;
     /** Harmonic level over the band they come from at 100 %. */
     static final float EXCITER_MAX = 1f;
-    static final float[] EXCITER_HZ = {2500, 3500, 5000, 7000};
+    static final float[] EXCITER_HZ = {1500, 2500, 3500, 5000};
     /**
-     * Only what lands at or above this is added: the exciter is air, not body. The band chosen by "from"
-     * is what the harmonics are made from (its 2nd harmonics and the sums of its notes), and a 4th-order
-     * high-pass here keeps just the part that falls on 10 kHz and above (-3 dB at 10 kHz, -12 dB at 8 kHz).
-     * A start of 5 kHz or more makes its 2nd harmonic land here; a lower start also feeds the sums of
-     * its upper notes in.
+     * Only what lands at or above this is added: the exciter is air, not body. A 4th-order high-pass keeps
+     * the part of the generated harmonics at 10 kHz and up (-3 dB at 10 kHz, -12 dB at 8 kHz).
      */
     static final double EXCITER_AIR_HZ = 10000;
+    /** The band the harmonics are made from ends here: above it the 2nd harmonic alone already lands in the air. */
+    static final double EXCITER_SOURCE_TOP_HZ = 6000;
+    /** Harmonic level, in units of the band's own average level, at full exciter. */
+    static final double AIR_GAIN = 1.6;
+    /** The clipper runs at this multiple of the sample rate. */
+    static final int AIR_OVERSAMPLE = 4;
     /**
-     * Peak growth per unit of harmonic level at each frequency above: the worst of the owner's 39
-     * tracks (Linkin Park, Slipknot, Limp Bizkit and others), measured on 0.1.113's exciter on
-     * 7 November 2026. Without the aliasing and difference tones it grows peaks about half as much
-     * as 0.1.112's did (1.15, 0.87, 0.76, 0.60), so it needs half the headroom.
+     * Peak growth per unit of exciter, per start frequency. What is added sits at 10 kHz and up, at about
+     * 20 dB below the music at full exciter, so it barely moves the peaks: 0.01 to 0.03 on the loud
+     * Switchfoot section (0.1.125, 14 November 2026). Held at 0.15 for every start, five times that,
+     * until the owner's loudest tracks are measured again (the earlier table, 0.62 to 0.25, was
+     * the worst of 39 tracks for the old mid-band exciter).
      */
-    static final float[] EXCITER_PEAK = {.62f, .50f, .45f, .25f};
+    static final float[] EXCITER_PEAK = {.15f, .15f, .15f, .15f};
     /** Envelope smoothing; u (band over its average level) is held within ±2, so a hit out of silence can't explode. */
     private static final double ENVELOPE_S = .010, U_MAX = 2;
-    /** Scales a sine's 2nd harmonic to half its level (π/4 × 0.64 ≈ 0.5), as the first version gave. */
-    private static final double SHAPE_GAIN = .64;
 
     /** Even out: where the song's average level is pulled to, the share of the distance covered at full strength going up and going down (loud parts are eased less than quiet ones are lifted), and the most the gain moves (dB). */
     static final double EVEN_TARGET_DB = -13, EVEN_UP = 1.0, EVEN_DOWN = .5, EVEN_LIMIT_DB = 8;
@@ -232,6 +235,50 @@ final class SoundEffects {
         }
     }
 
+    /**
+     * The harmonic generator: the band over its own level goes up to four times the sample rate, through
+     * an asymmetric soft clipper (odd and even overtones, many of them), then a high-pass at 10 kHz keeps
+     * only the air and a low-pass below the original Nyquist keeps the rest from folding back when the
+     * rate comes down again. One per channel.
+     */
+    static final class Air {
+        private final Biquad upA = new Biquad(), upB = new Biquad(), hpA = new Biquad(), hpB = new Biquad(),
+                lpA = new Biquad(), lpB = new Biquad();
+
+        Air(double rate) {
+            double fast = rate * AIR_OVERSAMPLE;
+            // Hold, then smooth: the images of a hold sit at the original rate, far above the 6 kHz band.
+            upA.lowPass(8000, Q1, fast);
+            upB.lowPass(8000, Q2, fast);
+            hpA.highPass(EXCITER_AIR_HZ, Q1, fast);
+            hpB.highPass(EXCITER_AIR_HZ, Q2, fast);
+            double top = Math.min(16000, rate * .36);
+            lpA.lowPass(top, Q1, fast);
+            lpB.lowPass(top, Q2, fast);
+        }
+
+        /** {@code u}: the band divided by its average level (held within ±2). Returns the air, in units of that level. */
+        double next(double u) {
+            double out = 0;
+            for (int i = 0; i < AIR_OVERSAMPLE; i++) {
+                double v = upB.next(upA.next(u));
+                out = lpB.next(lpA.next(hpB.next(hpA.next(clip(v)))));
+            }
+            return out;
+        }
+
+        /** Soft clip with a slight asymmetry: x(27+x²)/(27+9x²) is tanh to within 2 % up to 3, and is held there. */
+        static double clip(double v) {
+            double x = 3 * (v + .3 * v * Math.abs(v));
+            x = Math.max(-3, Math.min(3, x));
+            return x * (27 + x * x) / (27 + 9 * x * x);
+        }
+
+        void reset() {
+            upA.reset(); upB.reset(); hpA.reset(); hpB.reset(); lpA.reset(); lpB.reset();
+        }
+    }
+
     /** A second-order section (RBJ cookbook), transposed direct form II. */
     static final class Biquad {
         private double b0, b1, b2, a1, a2, z1, z2;
@@ -289,7 +336,8 @@ final class SoundEffects {
         private final double rate, smoothing, bassRelease;
         private Settings settings = Settings.OFF;
         private float pre = 1;
-        private final Biquad[] start, limitA, limitB, keepA, keepB, bass;
+        private final Biquad[] start, limitA, limitB, bass;
+        private final Air[] air;
         private final Biquad harmonicLow = new Biquad(), harmonicHighA = new Biquad(), harmonicHighB = new Biquad();
         private final Biquad harmonicKeepA = new Biquad(), harmonicKeepB = new Biquad(), harmonicTop = new Biquad();
         private final double harmonicDecay;
@@ -337,12 +385,11 @@ final class SoundEffects {
             start = new Biquad[this.channels];
             limitA = new Biquad[this.channels];
             limitB = new Biquad[this.channels];
-            keepA = new Biquad[this.channels];
-            keepB = new Biquad[this.channels];
+            air = new Air[this.channels];
             envelope = new double[this.channels];
             for (int c = 0; c < this.channels; c++) {
                 start[c] = new Biquad(); limitA[c] = new Biquad(); limitB[c] = new Biquad();
-                keepA[c] = new Biquad(); keepB[c] = new Biquad();
+                air[c] = new Air(rate);
                 bass[c] = new Biquad();
             }
             configure(Settings.OFF);
@@ -354,13 +401,11 @@ final class SoundEffects {
         void configure(Settings next) {
             settings = next;
             pre = next.preGain();
-            double top = rate * .20, keep = Math.min(EXCITER_AIR_HZ, rate * .4);
+            double top = Math.min(rate * .20, EXCITER_SOURCE_TOP_HZ);
             for (int c = 0; c < channels; c++) {
                 start[c].highPass(next.exciterHz, .7071, rate);
                 limitA[c].lowPass(top, Q1, rate);
                 limitB[c].lowPass(top, Q2, rate);
-                keepA[c].highPass(keep, Q1, rate);
-                keepB[c].highPass(keep, Q2, rate);
                 bass[c].peaking(BASS_HZ, BASS_Q, next.bassDb * BASS_BELL, rate);
             }
             harmonicWet = next.bassDb / BASS_MAX_DB * HARMONIC_MAX;
@@ -369,7 +414,7 @@ final class SoundEffects {
         void reset() {
             evenPower = 0; evenTarget = evenGain = 1; evenCount = 0;
             for (int c = 0; c < channels; c++) {
-                start[c].reset(); limitA[c].reset(); limitB[c].reset(); keepA[c].reset(); keepB[c].reset();
+                start[c].reset(); limitA[c].reset(); limitB[c].reset(); air[c].reset();
                 envelope[c] = 0;
                 bass[c].reset();
             }
@@ -419,8 +464,7 @@ final class SoundEffects {
                     // distortion, slow enough that a transient briefly gets more harmonics.
                     envelope[c] += (Math.abs(band) - envelope[c]) * smoothing;
                     double u = envelope[c] < 1e-9 ? 0 : Math.max(-U_MAX, Math.min(U_MAX, band / envelope[c]));
-                    double shaped = envelope[c] * u * u * SHAPE_GAIN;
-                    y += keepB[c].next(keepA[c].next(shaped)) * amount;
+                    y += air[c].next(u) * envelope[c] * AIR_GAIN * amount;
                 }
                 double lift = lifting ? bass[c].next(x) - x + harmonics : 0;
                 // Only what the filter adds can be eased off, and the most that still fits under the
