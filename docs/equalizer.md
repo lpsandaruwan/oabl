@@ -2,6 +2,11 @@
 
 Current build: open the dock **Equalizer** shortcut, **Launcher Settings → Audio equalizer**, or a compatible player's Android audio-effect control-panel action.
 
+**Launcher 0.1.125 (14 November 2026): the exciter adds only what lands at 10 kHz and above.**
+- **Change:** the output high-pass moved from 1.5 times the "from" frequency (3.75 to 10.5 kHz) to a fixed 10 kHz, 4th order (-3 dB at 10 kHz, about -12 dB at 8 kHz). The "from" setting still chooses the band the harmonics are made from. From 5 kHz up its 2nd harmonic lands at or above 10 kHz; lower starts also feed in the sums of their upper notes (6 + 7 kHz gives 13 kHz). Difference tones below the band are still dropped.
+- **Headroom:** less is added than before at every setting, so the old peak table stays a safe bound. Measured on the loud Switchfoot section at 100 %, peak growth per unit went 0.162 to 0.138 (2.5 kHz), 0.097 to 0.063 (3.5), 0.069 to 0.055 (5) and 0.023 to 0.018 (7). The worst-of-39-tracks table (0.62, 0.50, 0.45, 0.25) was not re-measured; it can be tightened when the box is reachable.
+- **What to expect:** a subtler, airier effect with no added presence in the 4 to 9 kHz range, which is where a clean guitar or cymbals sit. Car speakers and road noise may hide a lot of content above 10 kHz, so it may need a higher amount than before.
+
 **Launcher 0.1.124 (13 November 2026): Even out quiet parts (OABL Music).**
 - **Why:** "Meant to Live" opens 8.4 dB below its body (intro -18.1 dB, body -9.7 dB), and the 1.3-2.5 dB mid cut in the saved curve took the intro to -20.2 dB. Nothing in the effects was masking it (left and right of the intro are independent, correlation 0; the effects pass it at -18.1 dB in and out), so this is the master plus road noise.
 - **What it does:** a slow leveler ahead of the exciter and bass. It reads the song's average level (150 ms to rise, 400 ms to fall, both channels together so the stereo image stays put), pulls it toward -13 dBFS, lifting quiet parts by the whole distance and easing loud ones by half of it, never more than 8 dB times the strength, and fading out below -42 dB so fades and gaps aren't lifted into hiss. Peaks still go through the soft limiter.

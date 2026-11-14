@@ -42,11 +42,22 @@ public class SoundEffectsTest {
     /** The first waveshaper (Chebyshev T3) turned into an inverted copy on real music and cancelled the top. */
     @Test public void theExciterAddsHarmonicsWithoutCancellingTheTrebleItStartsFrom() {
         SoundEffects.Settings s = new SoundEffects.Settings(1, 2500);
+        float[] out = run(s, 6000, .5);
+        double dry = .5 * s.preGain();
+        assertTrue("6 kHz kept: " + level(out, 6000) + " vs " + dry, level(out, 6000) > dry * .9);
+        assertTrue("12 kHz added: " + level(out, 12000), level(out, 12000) > dry * .3);
+        assertTrue("even harmonics only", level(out, 18000) < dry * .05);
+    }
+
+    /** The harmonics are air: nothing is added below 10 kHz, so a 4 kHz note's 8 kHz harmonic is left out. */
+    @Test public void theExciterAddsOnlyWhatLandsAtTenKilohertzAndAbove() {
+        SoundEffects.Settings s = new SoundEffects.Settings(1, 2500);
         float[] out = run(s, 4000, .5);
         double dry = .5 * s.preGain();
-        assertTrue("4 kHz kept: " + level(out, 4000) + " vs " + dry, level(out, 4000) > dry * .9);
-        assertTrue("8 kHz added: " + level(out, 8000), level(out, 8000) > dry * .3);
-        assertTrue("even harmonics only", level(out, 12000) < dry * .05);
+        assertTrue("4 kHz kept: " + level(out, 4000), level(out, 4000) > dry * .9);
+        assertTrue("8 kHz mostly left out: " + level(out, 8000), level(out, 8000) < dry * .2); // the 4th-order high-pass still passes about -12 dB there
+        // A 5 kHz note's 2nd harmonic is exactly 10 kHz and is kept (at the high-pass corner), a 6 kHz note's 12 kHz fully.
+        assertTrue("10 kHz from 5 kHz: " + level(run(s, 5000, .5), 10000), level(run(s, 5000, .5), 10000) > dry * .15);
     }
 
     /** Squaring content above a quarter of the sample rate folds its 2nd harmonic back down as off-pitch fizz. */
@@ -66,7 +77,7 @@ public class SoundEffectsTest {
         assertTrue("alias at 14.1 kHz: " + alias, alias < dry * .02);
     }
 
-    /** Two treble notes must not leave a difference tone in the mids (3 + 4 kHz would give 1 kHz). */
+    /** Two treble notes must not leave a difference tone in the mids (6 + 7 kHz would give 1 kHz). */
     @Test public void theExciterAddsNoDifferenceTonesBelowItsBand() {
         SoundEffects.Settings s = new SoundEffects.Settings(1, 2500);
         SoundEffects.Chain chain = new SoundEffects.Chain(2, RATE);
@@ -74,13 +85,13 @@ public class SoundEffectsTest {
         float[] out = new float[RATE * 2];
         float[] frame = new float[2];
         for (int i = 0; i < out.length; i++) {
-            frame[0] = frame[1] = (float) (.3 * Math.sin(2 * Math.PI * 3000 * i / RATE) + .3 * Math.sin(2 * Math.PI * 4000 * i / RATE));
+            frame[0] = frame[1] = (float) (.3 * Math.sin(2 * Math.PI * 6000 * i / RATE) + .3 * Math.sin(2 * Math.PI * 7000 * i / RATE));
             chain.process(frame, true);
             out[i] = frame[0];
         }
         double dry = .3 * s.preGain();
         assertTrue("1 kHz difference tone: " + level(out, 1000), level(out, 1000) < dry * .02);
-        assertTrue("7 kHz sum tone added: " + level(out, 7000), level(out, 7000) > dry * .1);
+        assertTrue("13 kHz sum tone added: " + level(out, 13000), level(out, 13000) > dry * .1);
     }
 
     private static double levelAt(float[] x, double hz, int rate) {

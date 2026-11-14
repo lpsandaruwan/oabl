@@ -7,7 +7,8 @@ package com.softiva.oabl;
  * 80 Hz. Only a share of the boost is taken off the whole song, and what it adds eases off for a peak.
  *
  * The <b>exciter</b> is OABL Music's original effect. Each channel's top end above the chosen
- * frequency gets new even harmonics mixed back in, for bite and air.
+ * frequency gets new even harmonics made from it, and what lands at 10 kHz and above is mixed
+ * back in, for air.
  *
  * The layout is the classic Aphex Aural Exciter one: the dry signal passes untouched, and a side
  * chain (a tunable high-pass, then a harmonic generator) is mixed back in at a low level.
@@ -45,6 +46,14 @@ final class SoundEffects {
     /** Harmonic level over the band they come from at 100 %. */
     static final float EXCITER_MAX = 1f;
     static final float[] EXCITER_HZ = {2500, 3500, 5000, 7000};
+    /**
+     * Only what lands at or above this is added: the exciter is air, not body. The band chosen by "from"
+     * is what the harmonics are made from (its 2nd harmonics and the sums of its notes), and a 4th-order
+     * high-pass here keeps just the part that falls on 10 kHz and above (-3 dB at 10 kHz, -12 dB at 8 kHz).
+     * A start of 5 kHz or more makes its 2nd harmonic land here; a lower start also feeds the sums of
+     * its upper notes in.
+     */
+    static final double EXCITER_AIR_HZ = 10000;
     /**
      * Peak growth per unit of harmonic level at each frequency above: the worst of the owner's 39
      * tracks (Linkin Park, Slipknot, Limp Bizkit and others), measured on 0.1.113's exciter on
@@ -345,7 +354,7 @@ final class SoundEffects {
         void configure(Settings next) {
             settings = next;
             pre = next.preGain();
-            double top = rate * .20, keep = Math.min(next.exciterHz * 1.5, rate * .4);
+            double top = rate * .20, keep = Math.min(EXCITER_AIR_HZ, rate * .4);
             for (int c = 0; c < channels; c++) {
                 start[c].highPass(next.exciterHz, .7071, rate);
                 limitA[c].lowPass(top, Q1, rate);
