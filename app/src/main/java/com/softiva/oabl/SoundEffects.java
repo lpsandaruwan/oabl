@@ -47,6 +47,8 @@ final class SoundEffects {
     static final float KNEE = 0.9f;
     /** Harmonic level over the band they come from at 100 %. */
     static final float EXCITER_MAX = 1f;
+    /** The Crystalizer's intensity at the top of its slider: each sample gets (sample - previous) * intensity added, 1 + 2 * intensity at the very top of the band. */
+    static final float CRYSTAL_MAX = 1f;
     static final float[] EXCITER_HZ = {1500, 2500, 3500, 5000};
     /**
      * Only what lands above the "harmonics from" frequency is added: the exciter is air, not body.
@@ -125,8 +127,9 @@ final class SoundEffects {
     /** What to run: the exciter's amount (0..1) and where it starts, and the bass boost in dB. */
     static final class Settings {
         static final Settings OFF = new Settings(0, 3500);
-        final float exciter, exciterHz, bassDb, even, airHz, bassBandHz, bassAirHz;
-        final boolean headroom;
+        final float exciter, exciterHz, bassDb, even, airHz, bassBandHz, bassAirHz, crystal;
+        /** Round to 16 bit with dither and noise shaping (see {@link Dither}); read by the player, not by the chain. */
+        final boolean headroom, dither;
 
         Settings(float exciter, float exciterHz) { this(exciter, exciterHz, 0); }
 
@@ -144,7 +147,19 @@ final class SoundEffects {
 
         Settings(float exciter, float exciterHz, float bassDb, boolean headroom, float even, float airHz,
                  float bassBandHz, float bassAirHz) {
+            this(exciter, exciterHz, bassDb, headroom, even, airHz, bassBandHz, bassAirHz, 0);
+        }
+
+        Settings(float exciter, float exciterHz, float bassDb, boolean headroom, float even, float airHz,
+                 float bassBandHz, float bassAirHz, float crystal) {
+            this(exciter, exciterHz, bassDb, headroom, even, airHz, bassBandHz, bassAirHz, crystal, true);
+        }
+
+        Settings(float exciter, float exciterHz, float bassDb, boolean headroom, float even, float airHz,
+                 float bassBandHz, float bassAirHz, float crystal, boolean dither) {
             this.headroom = headroom;
+            this.dither = dither;
+            this.crystal = unit(crystal);
             this.bassBandHz = nearest(BASS_BAND_HZ, bassBandHz);
             this.bassAirHz = nearest(BASS_AIR_HZ, bassAirHz);
             this.airHz = nearest(AIR_HZ, airHz);
@@ -154,27 +169,28 @@ final class SoundEffects {
             this.bassDb = unit(bassDb / BASS_MAX_DB) * BASS_MAX_DB;
         }
 
-        boolean active() { return exciter > 0 || bassDb > 0 || even > 0; }
+        boolean active() { return exciter > 0 || bassDb > 0 || even > 0 || crystal > 0; }
 
         /** Input scale: room for the exciter on the worst measured master, and part of the bass boost. */
         float preGain() {
             if (!headroom) return 1f;
             float forExciter = 1f / (1f + EXCITER_PEAK[index(EXCITER_HZ, exciterHz)] * EXCITER_MAX * exciter);
-            return forExciter * (float) Math.pow(10, -bassDb * BASS_HEADROOM / 20);
+            float forCrystal = 1f / (1f + 2f * CRYSTAL_MAX * crystal);
+            return forExciter * forCrystal * (float) Math.pow(10, -bassDb * BASS_HEADROOM / 20);
         }
 
         @Override public boolean equals(Object other) {
             if (!(other instanceof Settings)) return false;
             Settings o = (Settings) other;
             return exciter == o.exciter && exciterHz == o.exciterHz && bassDb == o.bassDb && headroom == o.headroom && even == o.even && airHz == o.airHz
-                    && bassBandHz == o.bassBandHz && bassAirHz == o.bassAirHz;
+                    && bassBandHz == o.bassBandHz && bassAirHz == o.bassAirHz && crystal == o.crystal && dither == o.dither;
         }
 
         @Override public int hashCode() {
-            return 31 * (31 * (31 * (31 * (31 * (31 * (31 * Float.hashCode(exciter) + Float.hashCode(exciterHz)) + Float.hashCode(bassDb)) + Boolean.hashCode(headroom)) + Float.hashCode(even)) + Float.hashCode(airHz)) + Float.hashCode(bassBandHz)) + Float.hashCode(bassAirHz);
+            return 31 * (31 * (31 * (31 * (31 * (31 * (31 * (31 * (31 * Float.hashCode(exciter) + Float.hashCode(exciterHz)) + Float.hashCode(bassDb)) + Boolean.hashCode(headroom)) + Float.hashCode(even)) + Float.hashCode(airHz)) + Float.hashCode(bassBandHz)) + Float.hashCode(bassAirHz)) + Float.hashCode(crystal)) + Boolean.hashCode(dither);
         }
 
-        @Override public String toString() { return exciter + "/" + exciterHz + "/" + bassDb + "/" + headroom + "/" + even + "/" + airHz + "/" + bassBandHz + "/" + bassAirHz; }
+        @Override public String toString() { return exciter + "/" + exciterHz + "/" + bassDb + "/" + headroom + "/" + even + "/" + airHz + "/" + bassBandHz + "/" + bassAirHz + "/" + crystal + "/" + dither; }
     }
 
     static int index(float[] choices, float value) {
@@ -374,7 +390,7 @@ final class SoundEffects {
         private final double harmonicDecay;
         private double harmonicEnvelope;
         private float harmonicWet;
-        private final double[] envelope;
+        private final double[] envelope, previous;
         // Look-ahead for the bass: the last few milliseconds of each part of the signal, oldest at `at`.
         private final int span;
         private final double[][] music, exciterAdded, bassAdded;
@@ -418,6 +434,7 @@ final class SoundEffects {
             limitB = new Biquad[this.channels];
             air = new Air[this.channels];
             envelope = new double[this.channels];
+            previous = new double[this.channels];
             for (int c = 0; c < this.channels; c++) {
                 start[c] = new Biquad(); limitA[c] = new Biquad(); limitB[c] = new Biquad();
                 air[c] = new Air(rate);
@@ -450,7 +467,7 @@ final class SoundEffects {
             evenPower = 0; evenTarget = evenGain = 1; evenCount = 0;
             for (int c = 0; c < channels; c++) {
                 start[c].reset(); limitA[c].reset(); limitB[c].reset(); air[c].reset();
-                envelope[c] = 0;
+                envelope[c] = 0; previous[c] = 0;
                 bass[c].reset();
             }
             harmonicLow.reset(); harmonicHighA.reset(); harmonicHighB.reset();
@@ -480,6 +497,7 @@ final class SoundEffects {
         /** One frame in place, samples in -1..1; {@code limit} false is for measuring only. */
         void process(float[] frame, boolean limit) {
             float amount = settings.exciter * EXCITER_MAX;
+            double crystal = settings.crystal * CRYSTAL_MAX;
             boolean lifting = settings.bassDb > 0;
             double level = pre;
             if (settings.even > 0) level *= leveler(frame);
@@ -491,10 +509,13 @@ final class SoundEffects {
                 harmonics = harmonics(mono / channels) * harmonicWet;
             }
             for (int c = 0; c < channels; c++) {
-                double x = frame[c] * level;
+                double raw = frame[c] * level;
+                // The Crystalizer: the change since the last sample added back, a clean treble lift.
+                double x = raw + (raw - previous[c]) * crystal;
+                previous[c] = raw;
                 double y = x;
                 if (amount > 0) {
-                    double band = limitB[c].next(limitA[c].next(start[c].next(x)));
+                    double band = limitB[c].next(limitA[c].next(start[c].next(raw)));
                     // The band's average level, smoothed over 10 ms: steady enough not to add its own
                     // distortion, slow enough that a transient briefly gets more harmonics.
                     envelope[c] += (Math.abs(band) - envelope[c]) * smoothing;
@@ -502,9 +523,12 @@ final class SoundEffects {
                     y += air[c].next(u) * envelope[c] * AIR_GAIN * amount;
                 }
                 double lift = lifting ? bass[c].next(x) - x + harmonics : 0;
-                // Only what the filter adds can be eased off, and the most that still fits under the
-                // ceiling is the room this frame has.
-                if (lift != 0) room = Math.min(room, (Math.copySign(BASS_CEILING, lift) - y) / lift);
+                // Only what the effects add can be eased off (the music itself is left alone), and the most
+                // of it that still fits under the ceiling is the room this frame has. The exciter's air
+                // counts too: a bright, loud master used to push the sum into the limiter, which bent the
+                // music with it, and that was the distortion at high exciter levels.
+                double added = y - x + lift;
+                if (added != 0) room = Math.min(room, (Math.copySign(BASS_CEILING, added) - x) / added);
                 incoming[c] = x;
                 incomingExciter[c] = y - x;
                 incomingBass[c] = lift;
@@ -512,7 +536,7 @@ final class SoundEffects {
             double gain = easedGain(Math.max(0, room));
             double mix = 0;
             for (int c = 0; c < channels; c++) {
-                double x = music[c][at], y = x + exciterAdded[c][at] + gain * bassAdded[c][at];
+                double x = music[c][at], y = x + gain * (exciterAdded[c][at] + bassAdded[c][at]);
                 mix += x;
                 music[c][at] = incoming[c];
                 exciterAdded[c][at] = incomingExciter[c];

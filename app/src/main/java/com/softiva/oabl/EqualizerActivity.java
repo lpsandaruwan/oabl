@@ -50,8 +50,8 @@ public final class EqualizerActivity extends Activity {
     private SharedPreferences ui;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private TextView statusChip, preampLabel, source, linkSelector, gainLabel, normalizeSelector, bandLabel, bandGain,
-            help, exciterValue, frequenciesBass, frequenciesExciter, bassValue, evenValue, headroomValue, compare;
-    private Switch headroomSwitch;
+            help, exciterValue, frequenciesBass, frequenciesExciter, bassValue, evenValue, headroomValue, ditherValue, crystalValue, compare;
+    private Switch headroomSwitch, ditherSwitch;
     private EqualizerCurveView curve;
     private EqualizerSlidersView sliders;
     private HorizontalScrollView curveScroll;
@@ -365,6 +365,7 @@ public final class EqualizerActivity extends Activity {
         frequenciesExciter = text("", 14, palette.ink);
         bassValue = text("", 15, palette.ink);
         evenValue = text("", 15, palette.ink);
+        crystalValue = text("", 15, palette.ink);
         LinearLayout sound = row();
         weighted(sound, sliderCard("BASS · OABL MUSIC", bassValue, "eq_bass", 20, Math.round(profile.bass() * 2),
                 p -> { profile.setBass(p / 2f); markCustom(); }), 2, 0, panelHeight(compact));
@@ -372,7 +373,9 @@ public final class EqualizerActivity extends Activity {
                 p -> { profile.setExciter(p / 20f); markCustom(); }), 2, 10, panelHeight(compact));
         weighted(sound, sliderCard("EVEN OUT · OABL MUSIC", evenValue, "eq_even", 20, Math.round(profile.even() * 20),
                 p -> profile.setEven(p / 20f)), 2, 10, panelHeight(compact));
-        weighted(sound, frequenciesCard(), 2, 10, panelHeight(compact));
+        weighted(sound, sliderCard("CRYSTALIZER · OABL MUSIC", crystalValue, "eq_crystal", 20, Math.round(profile.crystal() * 20),
+                p -> profile.setCrystal(p / 20f)), 2, 10, panelHeight(compact));
+        weighted(sound, frequenciesCard(), 3, 10, panelHeight(compact));
         if (compact) {
             // Two readable controls, side by side or one to a row in the narrowest panes.
             LinearLayout shaped = column();
@@ -435,6 +438,20 @@ public final class EqualizerActivity extends Activity {
         headroomSwitch.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         tint(headroomSwitch);
         headroomCard.addView(headroomSwitch, lp(-2, 48));
+        ditherValue = text("", 16, palette.ink);
+        LinearLayout ditherCard = control("DITHER", ditherValue, () -> {
+            profile.setDither(!profile.dither());
+            profile.flush();
+            updateStatus();
+            scheduleApply();
+        }, "eq_dither");
+        ditherCard.removeViewAt(ditherCard.getChildCount() - 1);
+        ditherSwitch = new Switch(this);
+        ditherSwitch.setClickable(false);
+        ditherSwitch.setFocusable(false);
+        ditherSwitch.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        tint(ditherSwitch);
+        ditherCard.addView(ditherSwitch, lp(-2, 48));
         preampLabel = text("", 11, palette.muted);
         preampLabel.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
         if (compact) {
@@ -444,11 +461,16 @@ public final class EqualizerActivity extends Activity {
             weighted(options, normal, 1, 0, 86);
             weighted(options, headroomCard, 1, 8, 86);
             outputPanel.addView(options);
+            space(outputPanel, 8);
+            LinearLayout more = row();
+            weighted(more, ditherCard, 1, 0, 86);
+            outputPanel.addView(more);
         } else {
             LinearLayout output = row();
             weighted(output, gainCard, 2, 0, panelHeight(compact));
             weighted(output, normal, 1, 10, panelHeight(compact));
             weighted(output, headroomCard, 1, 10, panelHeight(compact));
+            weighted(output, ditherCard, 1, 10, panelHeight(compact));
             outputPanel.addView(output);
         }
         installPanels(content, compact, soundPanel, outputPanel);
@@ -696,12 +718,15 @@ public final class EqualizerActivity extends Activity {
         update(preampLabel, profile.headroom() ? "Input " + db(profile.inputGain()) + " · set automatically" : "Input " + db(profile.inputGain()) + " · headroom off");
         update(headroomValue, profile.headroom() ? "On" : "Off · may clip");
         if (headroomSwitch.isChecked() != profile.headroom()) headroomSwitch.setChecked(profile.headroom());
+        update(ditherValue, profile.dither() ? "On · noise-shaped" : "Off");
+        if (ditherSwitch.isChecked() != profile.dither()) ditherSwitch.setChecked(profile.dither());
         int band = curve.selected();
         float[] values = model.values();
         update(bandLabel, frequency(band) + " · " + model.role(band));
         update(bandGain, db(values[Math.min(band, values.length - 1)]));
         update(exciterValue, percent(profile.exciter()));
         update(evenValue, profile.even() == 0 ? "Off" : percent(profile.even()));
+        update(crystalValue, profile.crystal() == 0 ? "Off" : percent(profile.crystal()));
         update(bassValue, profile.bass() == 0 ? "Off" : String.format(java.util.Locale.US, "+%.1f dB", profile.bass()));
         update(frequenciesBass, "Bass  " + Math.round(profile.bassBandHz()) + " → " + Math.round(profile.bassAirHz()) + " Hz");
         update(frequenciesExciter, "Exciter  " + khz(profile.exciterHz()) + " → " + khz(profile.airHz()));
@@ -709,6 +734,7 @@ public final class EqualizerActivity extends Activity {
         syncBar("eq_exciter", profile.exciter());
         syncBar("eq_bass", profile.bass() / SoundEffects.BASS_MAX_DB);
         syncBar("eq_even", profile.even());
+        syncBar("eq_crystal", profile.crystal());
         undoButton.setEnabled(!undo.isEmpty());
         undoButton.setAlpha(undo.isEmpty() ? .5f : 1f);
         redoButton.setEnabled(!redo.isEmpty());

@@ -470,6 +470,13 @@ final class EqualizerProfile {
     float even() { return clamp(preferences.getFloat("fx_even", 0), 0, 1); }
     void setEven(float value) { preferences.edit().putFloat("fx_even", clamp(value, 0, 1)).apply(); }
 
+    /**
+     * Crystalizer, 0..1: a clean treble lift (each sample plus its change since the last one), the crispness
+     * without the harmonics the exciter makes. Global like Even out, not part of a preset.
+     */
+    float crystal() { return clamp(preferences.getFloat("fx_crystal", 0), 0, 1); }
+    void setCrystal(float value) { preferences.edit().putFloat("fx_crystal", clamp(value, 0, 1)).apply(); }
+
     /** Where the exciter's harmonics start to be played, in Hz (6, 8, 10 or 12 kHz; 8 kHz default). Global, not part of a preset. */
     float airHz() { return SoundEffects.nearest(SoundEffects.AIR_HZ, preferences.getFloat("fx_air_hz", SoundEffects.AIR_DEFAULT_HZ)); }
     void setAirHz(float value) { preferences.edit().putFloat("fx_air_hz", SoundEffects.nearest(SoundEffects.AIR_HZ, value)).apply(); }
@@ -498,7 +505,7 @@ final class EqualizerProfile {
 
     /** What OABL Music should run: the exciter and bass while the equalizer is on, nothing while it is off. */
     SoundEffects.Settings activeEffects() {
-        return enabled() ? new SoundEffects.Settings(exciter(), exciterHz(), bass(), headroom(), even(), airHz(), bassBandHz(), bassAirHz()) : SoundEffects.Settings.OFF;
+        return enabled() ? new SoundEffects.Settings(exciter(), exciterHz(), bass(), headroom(), even(), airHz(), bassBandHz(), bassAirHz(), crystal(), dither()) : SoundEffects.Settings.OFF;
     }
 
     // ---- output ----
@@ -543,6 +550,14 @@ final class EqualizerProfile {
     }
 
     float inputGain() { return inputGain(masterGain(), gains(), headroom()); }
+
+    /**
+     * The Dither switch (on by default): the effects' 16-bit output is rounded with TPDF dither and
+     * Lipshitz noise shaping instead of a plain round, which keeps quiet passages and fades smooth.
+     * Only matters while an effect is on and the player works in 16 bit. Global, not part of a preset.
+     */
+    boolean dither() { return preferences.getBoolean("dither_on", true); }
+    void setDither(boolean on) { preferences.edit().putBoolean("dither_on", on).apply(); }
 
     /** The Headroom switch: take room for the curve's boost and the effects (on), or leave the level alone (off). */
     boolean headroom() { return preferences.getBoolean("headroom_on", true); }

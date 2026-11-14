@@ -16,6 +16,7 @@ final class SoundEffectsProcessor extends BaseAudioProcessor {
     private volatile boolean original;
     private SoundEffects.Chain chain;
     private SoundEffects.Match match;
+    private Dither dither;
     private float[] frame = new float[0], dry = new float[0];
 
     void setSettings(SoundEffects.Settings settings) { wanted = settings == null ? SoundEffects.Settings.OFF : settings; }
@@ -32,6 +33,7 @@ final class SoundEffectsProcessor extends BaseAudioProcessor {
         dry = new float[frame.length];
         // The chain looks 5 ms ahead; the original is delayed to match so Compare doesn't jump.
         match = new SoundEffects.Match(format.sampleRate, .005);
+        dither = new Dither(format.channelCount, format.sampleRate);
         return format;
     }
 
@@ -40,6 +42,7 @@ final class SoundEffectsProcessor extends BaseAudioProcessor {
         // A seek or a new track must not ring on with the old position's filter memories.
         if (chain != null) chain.reset();
         if (match != null) match.reset();
+        if (dither != null) dither.reset();
     }
 
     @Override
@@ -58,6 +61,7 @@ final class SoundEffectsProcessor extends BaseAudioProcessor {
         int bytes = pcm16 ? 2 : 4;
         int channels = frame.length;
         boolean wantOriginal = original;
+        boolean dithered = settings.dither;
         int frames = 0;
         while (input.remaining() >= bytes * channels) {
             for (int c = 0; c < channels; c++) frame[c] = pcm16 ? input.getShort() / 32768f : input.getFloat();
@@ -66,7 +70,7 @@ final class SoundEffectsProcessor extends BaseAudioProcessor {
             match.frame(dry, frame, wantOriginal);
             frames++;
             for (int c = 0; c < channels; c++) {
-                if (pcm16) output.putShort((short) Math.round(Math.max(-1f, Math.min(1f, frame[c])) * 32767f));
+                if (pcm16) output.putShort(dither.next(c, frame[c], dithered));
                 else output.putFloat(frame[c]);
             }
         }

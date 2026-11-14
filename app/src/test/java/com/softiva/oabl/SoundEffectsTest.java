@@ -357,4 +357,90 @@ public class SoundEffectsTest {
         double wideHarmonics = level(wide, 105) + level(wide, 140), narrowHarmonics = level(narrow, 105) + level(narrow, 140);
         assertTrue("from 30 Hz " + wideHarmonics + " vs from 60 Hz " + narrowHarmonics, wideHarmonics > narrowHarmonics * 2);
     }
+
+    // ---- Crystalizer ----
+
+    /** Level of a stereo sine through the chain with headroom off, in dB against the input. */
+    private static double toneGain(SoundEffects.Settings settings, double hz) {
+        SoundEffects.Chain chain = new SoundEffects.Chain(2, RATE);
+        chain.configure(settings);
+        float[] out = new float[RATE];
+        float[] frame = new float[2];
+        for (int i = 0; i < out.length; i++) {
+            frame[0] = frame[1] = (float) (.2 * Math.sin(2 * Math.PI * hz * i / RATE));
+            chain.process(frame, true);
+            out[i] = frame[0];
+        }
+        return db(rms(out, RATE / 2, RATE) / (.2 / Math.sqrt(2)));
+    }
+
+    @Test public void crystalizerLiftsTheTrebleAndLeavesTheBassAlone() {
+        SoundEffects.Settings off = new SoundEffects.Settings(0, 1500, 0, false, 0, 8000, 40, 100, 0);
+        SoundEffects.Settings on = new SoundEffects.Settings(0, 1500, 0, false, 0, 8000, 40, 100, .5f);
+        assertEquals(0, toneGain(off, 10000), 0.05);
+        assertEquals(0, toneGain(on, 100), 0.1);
+        // |1 + k (1 - e^-jw)| for k = .5: +1.2 dB at 5 kHz, +3.3 dB at 10 kHz, +5.8 dB at 20 kHz.
+        assertEquals(1.17, toneGain(on, 5000), .2);
+        assertEquals(3.25, toneGain(on, 10000), .2);
+        assertTrue(toneGain(on, 16000) > toneGain(on, 5000) + 2);
+    }
+
+    @Test public void crystalizerAddsNoHarmonics() {
+        SoundEffects.Chain chain = new SoundEffects.Chain(2, RATE);
+        chain.configure(new SoundEffects.Settings(0, 1500, 0, false, 0, 8000, 40, 100, 1f));
+        float[] frame = new float[2];
+        double in = 0, sine = 0, cosine = 0;
+        for (int i = 0; i < RATE; i++) {
+            frame[0] = frame[1] = (float) (.1 * Math.sin(2 * Math.PI * 1000 * i / RATE));
+            chain.process(frame, true);
+            // A linear filter keeps a 1 kHz tone a 1 kHz tone (shifted in phase): all its power is at 1 kHz.
+            if (i >= RATE / 2) {
+                double w = 2 * Math.PI * 1000 * i / RATE;
+                sine += (double) frame[0] * Math.sin(w); cosine += (double) frame[0] * Math.cos(w); in += (double) frame[0] * frame[0];
+            }
+        }
+        double n = RATE / 2.0;
+        double fundamental = 2 * (sine * sine + cosine * cosine) / (n * n);   // power of the 1 kHz component
+        double total = in / n;
+        assertEquals(1, fundamental / total, 0.001);
+    }
+
+    @Test public void crystalizerTakesItsHeadroomOffTheInputWhenHeadroomIsOn() {
+        SoundEffects.Settings s = new SoundEffects.Settings(0, 1500, 0, true, 0, 8000, 40, 100, 1f);
+        assertEquals(1f / 3f, s.preGain(), 1e-6);
+        assertTrue(s.active());
+        assertFalse(new SoundEffects.Settings(0, 1500, 0, true, 0, 8000, 40, 100, 0).active());
+    }
+
+    // ---- Clipping guard ----
+
+    /** Loudest output sample and how many samples the limiter had to bend, for a loud two-tone with every effect up and headroom off. */
+    private static double[] loudRun(SoundEffects.Settings settings, double amplitude) {
+        SoundEffects.Chain chain = new SoundEffects.Chain(2, RATE);
+        chain.configure(settings);
+        float[] frame = new float[2];
+        double peak = 0, bent = 0;
+        for (int i = 0; i < RATE * 2; i++) {
+            double t = (double) i / RATE;
+            frame[0] = frame[1] = (float) (amplitude * (.5 * Math.sin(2 * Math.PI * 60 * t) + .3 * Math.sin(2 * Math.PI * 3000 * t) + .2 * Math.sin(2 * Math.PI * 7000 * t)));
+            chain.process(frame, false);
+            if (i < RATE) continue;
+            peak = Math.max(peak, Math.abs(frame[0]));
+            if (Math.abs(frame[0]) > SoundEffects.KNEE + 1e-3) bent++;
+        }
+        return new double[] {peak, bent};
+    }
+
+    @Test public void exciterAndBassBackOffInsteadOfPushingAPeakIntoTheLimiter() {
+        SoundEffects.Settings all = new SoundEffects.Settings(1f, 1500, 10, false, 0, 8000, 40, 100, 0);
+        double[] run = loudRun(all, .88);
+        assertEquals("peak " + run[0] + ", samples past the knee", 0, run[1], 0);
+        assertTrue("peak " + run[0], run[0] <= SoundEffects.KNEE + 1e-3);
+    }
+
+    @Test public void theGuardLeavesQuietMusicFullyEnhanced() {
+        SoundEffects.Settings exciter = new SoundEffects.Settings(1f, 1500, 0, false, 0, 8000, 40, 100, 0);
+        SoundEffects.Settings off = SoundEffects.Settings.OFF;
+        assertTrue(loudRun(exciter, .3)[0] > loudRun(off, .3)[0] + .004);
+    }
 }
