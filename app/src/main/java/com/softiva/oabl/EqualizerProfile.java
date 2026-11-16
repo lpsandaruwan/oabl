@@ -82,12 +82,12 @@ final class EqualizerProfile {
      * not heard it yet.
      */
     private static final float[][] PRESET_EFFECTS = {
-            {0, 1500, 0},
-            {.15f, 1500, 0},
-            {.1f, 1500, 0},
-            {0, 1500, 0},
-            {.2f, 1500, 0},
-            {0, 1500, 0},
+            {0, 1500, 0, 0, 0},
+            {.15f, 1500, 0, 0, 0},
+            {.1f, 1500, 0, 0, 0},
+            {0, 1500, 0, 0, 0},
+            {.2f, 1500, 0, 0, 0},
+            {0, 1500, 0, 0, 0},
     };
     /** Built-in presets before 0.1.108; a profile still naming one is shown as Custom. */
     private static final java.util.Set<String> RETIRED_PRESETS = new java.util.HashSet<>(java.util.Arrays.asList(
@@ -325,8 +325,9 @@ final class EqualizerProfile {
         String name = preferences.getString("preset", "Flat");
         return RETIRED_PRESETS.contains(name) ? "Custom" : name;
     }
-    /** A built-in preset: its curve and its effects. */
+    /** A built-in preset: its curve and its effects. What was being edited as Custom is kept, so the Custom card brings it back. */
     void preset(int index) {
+        stashCustom();
         setEffects(PRESET_EFFECTS[index]);
         writeStandard(presetCurve(index), PRESETS[index]);
     }
@@ -409,9 +410,11 @@ final class EqualizerProfile {
             org.json.JSONObject saved = new org.json.JSONObject(preferences.getString("custom_effects", "{}"));
             if (!saved.has(name)) return null;
             org.json.JSONArray levels = saved.getJSONArray(name);
-            if (levels.length() == 6) return new float[]{(float) levels.getDouble(3), (float) levels.getDouble(4), 0};
+            // NaN leaves the Crystalizer and Even out as they are: a preset saved before they were part of a preset has no say in them.
+            if (levels.length() == 6) return new float[]{(float) levels.getDouble(3), (float) levels.getDouble(4), 0, Float.NaN, Float.NaN};
             // Saved before the Bass: two values, so the Bass stays off.
-            if (levels.length() == 2) return new float[]{(float) levels.getDouble(0), (float) levels.getDouble(1), 0};
+            if (levels.length() == 2) return new float[]{(float) levels.getDouble(0), (float) levels.getDouble(1), 0, Float.NaN, Float.NaN};
+            if (levels.length() == 3) return new float[]{(float) levels.getDouble(0), (float) levels.getDouble(1), (float) levels.getDouble(2), Float.NaN, Float.NaN};
             if (levels.length() != EFFECTS) return null;
             float[] effects = new float[EFFECTS];
             for (int i = 0; i < EFFECTS; i++) effects[i] = (float) levels.getDouble(i);
@@ -424,6 +427,7 @@ final class EqualizerProfile {
     void applyCustom(String name) {
         float[] curve = customCurve(name);
         if (curve == null) return;
+        stashCustom();
         float[] effects = customEffects(name);
         if (effects != null) setEffects(effects);
         writeStandard(curve, name);
@@ -443,8 +447,8 @@ final class EqualizerProfile {
     // ---- the exciter (0.1.111: vocal focus, de-harsh, seat balance, speed lift and the Crystalizer
     // went; 0.1.112: virtual bass, deep bass, boom control and peak protection went too) ----
 
-    /** Exciter amount, exciter Hz, bass dB, in that order. */
-    static final int EFFECTS = 3;
+    /** Exciter amount, exciter Hz, bass dB, Crystalizer, Even out, in that order. Headroom and Dither are not part of a preset. */
+    static final int EFFECTS = 5;
     float exciter() { return clamp(preferences.getFloat("fx_exciter", 0), 0, 1); }
     void setExciter(float value) { preferences.edit().putFloat("fx_exciter", clamp(value, 0, 1)).apply(); }
     /**
@@ -487,12 +491,51 @@ final class EqualizerProfile {
     float bassAirHz() { return SoundEffects.nearest(SoundEffects.BASS_AIR_HZ, preferences.getFloat("fx_bass_air_hz", SoundEffects.BASS_AIR_DEFAULT_HZ)); }
     void setBassAirHz(float value) { preferences.edit().putFloat("fx_bass_air_hz", SoundEffects.nearest(SoundEffects.BASS_AIR_HZ, value)).apply(); }
 
-    float[] effects() { return new float[]{exciter(), exciterHz(), bass()}; }
+    float[] effects() { return new float[]{exciter(), exciterHz(), bass(), crystal(), even()}; }
     void setEffects(float[] values) {
-        if (values == null || values.length != EFFECTS) return;
+        if (values == null || (values.length != EFFECTS && values.length != 3)) return;
         setExciter(values[0]);
         setExciterHz(values[1]);
         setBass(values[2]);
+        if (values.length == EFFECTS && !Float.isNaN(values[3])) setCrystal(values[3]);
+        if (values.length == EFFECTS && !Float.isNaN(values[4])) setEven(values[4]);
+    }
+
+    // ---- Custom: the sound being edited, kept when a preset is chosen ----
+
+    /** Called before the sound being edited ("Custom") is replaced by a preset, so it can be brought back. */
+    void stashCustom() {
+        if (!"Custom".equals(preset())) return;
+        StringBuilder curve = new StringBuilder();
+        for (float gain : gains()) curve.append(curve.length() == 0 ? "" : ",").append(gain);
+        StringBuilder fx = new StringBuilder();
+        for (float value : effects()) fx.append(fx.length() == 0 ? "" : ",").append(value);
+        preferences.edit().putString("custom_last_curve", curve.toString()).putString("custom_last_effects", fx.toString()).apply();
+    }
+
+    float[] lastCustomCurve() {
+        String text = preferences.getString("custom_last_curve", null);
+        if (text == null) return null;
+        String[] parts = text.split(",");
+        if (parts.length != FREQUENCIES.length) return null;
+        float[] values = new float[parts.length];
+        try { for (int i = 0; i < parts.length; i++) values[i] = clamp(Float.parseFloat(parts[i]), -STYLE_DB, STYLE_DB); }
+        catch (NumberFormatException broken) { return null; }
+        return values;
+    }
+
+    /** Brings back the sound that was being edited before a preset was chosen. */
+    void applyLastCustom() {
+        float[] curve = lastCustomCurve();
+        if (curve == null) return;
+        String text = preferences.getString("custom_last_effects", "");
+        String[] parts = text.split(",");
+        if (parts.length == EFFECTS) {
+            float[] values = new float[EFFECTS];
+            try { for (int i = 0; i < EFFECTS; i++) values[i] = Float.parseFloat(parts[i]); setEffects(values); }
+            catch (NumberFormatException ignored) { }
+        }
+        writeStandard(curve, "Custom");
     }
 
     /**

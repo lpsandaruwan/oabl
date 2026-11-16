@@ -46,7 +46,7 @@ final class SoundEffects {
     /** Where the soft limiter starts, as a fraction of full scale. */
     static final float KNEE = 0.9f;
     /** Harmonic level over the band they come from at 100 %. */
-    static final float EXCITER_MAX = 1f;
+    static final float EXCITER_MAX = .5f;
     /** The Crystalizer's intensity at the top of its slider: each sample gets (sample - previous) * intensity added, 1 + 2 * intensity at the very top of the band. */
     static final float CRYSTAL_MAX = 1f;
     static final float[] EXCITER_HZ = {1500, 2500, 3500, 5000};
@@ -170,6 +170,20 @@ final class SoundEffects {
         }
 
         boolean active() { return exciter > 0 || bassDb > 0 || even > 0 || crystal > 0; }
+
+        /**
+         * Every setting as numbers, so the launcher can hand them to the music process with a command instead of
+         * leaving that process to re-read a preferences file the launcher may not have finished writing.
+         */
+        float[] pack() {
+            return new float[]{exciter, exciterHz, bassDb, headroom ? 1 : 0, even, airHz, bassBandHz, bassAirHz, crystal, dither ? 1 : 0};
+        }
+
+        /** The settings {@link #pack} made; null or a short array gives {@link #OFF}. */
+        static Settings unpack(float[] packed) {
+            if (packed == null || packed.length < 10) return OFF;
+            return new Settings(packed[0], packed[1], packed[2], packed[3] != 0, packed[4], packed[5], packed[6], packed[7], packed[8], packed[9] != 0);
+        }
 
         /** Input scale: room for the exciter on the worst measured master, and part of the bass boost. */
         float preGain() {

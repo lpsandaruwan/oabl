@@ -103,9 +103,28 @@ final class MusicClient implements Player.Listener {
     void effectsChanged() {
         EqualizerProfile profile = new EqualizerProfile(context);
         String effects = profile.activeEffects() + "|" + profile.comparing();
-        if (!connected() || effects.equals(effectsSent)) return;
+        if (effects.equals(effectsSent)) return;
+        // Nothing playing and no music process: the next song reads the new settings when it starts.
+        if (!connected() && !musicProcessRunning()) return;
         effectsSent = effects;
-        command("refresh");
+        sendEffects(profile);
+    }
+
+    /** The current settings go with the command: the music process used to re-read them from a file that might not be written yet. */
+    private void sendEffects(EqualizerProfile profile) {
+        Bundle args = new Bundle();
+        args.putFloatArray(MusicService.ARG_EFFECTS, profile.activeEffects().pack());
+        args.putBoolean(MusicService.ARG_ORIGINAL, profile.comparing());
+        custom(MusicService.COMMAND_REFRESH, args);
+    }
+
+    private boolean musicProcessRunning() {
+        android.app.ActivityManager manager = (android.app.ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+        if (manager == null) return false;
+        String name = context.getPackageName() + ":music";
+        List<android.app.ActivityManager.RunningAppProcessInfo> running = manager.getRunningAppProcesses();
+        if (running != null) for (android.app.ActivityManager.RunningAppProcessInfo info : running) if (name.equals(info.processName)) return true;
+        return false;
     }
     private Bundle extras() { return connected() ? controller.getSessionExtras() : Bundle.EMPTY; }
     private android.content.SharedPreferences saved() {
@@ -162,7 +181,7 @@ final class MusicClient implements Player.Listener {
             case "pause": whenConnected(() -> controller.pause()); break;
             case "next": whenConnected(() -> controller.seekToNext()); break;
             case "previous": whenConnected(() -> controller.seekToPrevious()); break;
-            case "refresh": custom(MusicService.COMMAND_REFRESH, Bundle.EMPTY); break;
+            case "refresh": sendEffects(new EqualizerProfile(context)); break;
             default: break;
         }
     }

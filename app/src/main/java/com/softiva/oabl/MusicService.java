@@ -67,7 +67,7 @@ public final class MusicService extends MediaSessionService {
     /** Commands only OABL's own UI may send. */
     static final String COMMAND_QUEUE = "oabl.queue", COMMAND_SHUFFLE = "oabl.shuffle",
             COMMAND_REFRESH = "oabl.refresh", COMMAND_REPEAT = "oabl.repeat";
-    static final String ARG_IDS = "ids", ARG_CURRENT = "current", ARG_REPEAT = "repeat";
+    static final String ARG_IDS = "ids", ARG_CURRENT = "current", ARG_REPEAT = "repeat", ARG_EFFECTS = "effects", ARG_ORIGINAL = "original";
     /** Session extras the UI reads. */
     static final String EXTRA_AUDIO_SESSION = "audioSession", EXTRA_ERROR = "error", EXTRA_UP_NEXT = "upNext",
             EXTRA_CURRENT = "current", EXTRA_REPEAT = "repeat", EXTRA_TOKEN = "platformToken";
@@ -228,7 +228,7 @@ public final class MusicService extends MediaSessionService {
             switch (command.customAction) {
                 case COMMAND_QUEUE: setQueue(args.getLongArray(ARG_IDS), args.getLong(ARG_CURRENT, -1)); break;
                 case COMMAND_SHUFFLE: shuffle(); break;
-                case COMMAND_REFRESH: refreshGain(); break;
+                case COMMAND_REFRESH: refreshGain(args); break;
                 case COMMAND_REPEAT: setRepeat(args.getString(ARG_REPEAT, "Off")); break;
                 default: return Futures.immediateFuture(new SessionResult(SessionError.ERROR_NOT_SUPPORTED));
             }
@@ -493,11 +493,16 @@ public final class MusicService extends MediaSessionService {
     }
 
     /** The normalisation mode, the effects, a preset or the equalizer's on/off changed. */
-    private void refreshGain() {
+    private void refreshGain() { refreshGain(null); }
+
+    /** {@code args} carries the settings the launcher just chose; without them they are read from the saved profile. */
+    private void refreshGain(Bundle args) {
         String mode = normalizationMode();
         EqualizerProfile profile = new EqualizerProfile(this);
-        SoundEffects.Settings settings = profile.activeEffects();
-        boolean original = profile.comparing();
+        float[] packed = args == null ? null : args.getFloatArray(ARG_EFFECTS);
+        SoundEffects.Settings settings = packed != null ? SoundEffects.Settings.unpack(packed) : profile.activeEffects();
+        boolean original = args != null && args.containsKey(ARG_ORIGINAL) ? args.getBoolean(ARG_ORIGINAL) : profile.comparing();
+        if (debugLogging()) Log.d(TAG, "effects refreshed " + (packed != null ? "from the launcher" : "from the saved profile") + ": " + settings);
         active.effects.setSettings(settings);
         active.effects.setOriginal(original);
         if (outgoing != null) {

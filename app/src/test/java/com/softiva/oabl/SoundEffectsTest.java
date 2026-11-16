@@ -145,7 +145,7 @@ public class SoundEffectsTest {
 
     @Test public void moreExciterMeansMoreHeadroom() {
         assertTrue(new SoundEffects.Settings(.4f, 3500).preGain() < new SoundEffects.Settings(.2f, 3500).preGain());
-        assertEquals(1f / (1f + SoundEffects.EXCITER_PEAK[2] * .2f), new SoundEffects.Settings(.2f, 3500).preGain(), 1e-6f);
+        assertEquals(1f / (1f + SoundEffects.EXCITER_PEAK[2] * SoundEffects.EXCITER_MAX * .2f), new SoundEffects.Settings(.2f, 3500).preGain(), 1e-6f);
     }
 
     @Test public void amountAndFrequencySnapToWhatIsOffered() {
@@ -442,5 +442,16 @@ public class SoundEffectsTest {
         SoundEffects.Settings exciter = new SoundEffects.Settings(1f, 1500, 0, false, 0, 8000, 40, 100, 0);
         SoundEffects.Settings off = SoundEffects.Settings.OFF;
         assertTrue(loudRun(exciter, .3)[0] > loudRun(off, .3)[0] + .004);
+    }
+
+    @Test public void packedSettingsCrossToTheMusicProcessIntact() {
+        SoundEffects.Settings in = new SoundEffects.Settings(.7f, 2500, 6, false, .4f, 10000, 50, 120, .3f, false);
+        assertEquals(in, SoundEffects.Settings.unpack(in.pack()));
+        assertEquals(SoundEffects.Settings.OFF, SoundEffects.Settings.unpack(null));
+        assertEquals(SoundEffects.Settings.OFF, SoundEffects.Settings.unpack(new float[3]));
+    }
+
+    @Test public void theExciterAtFullIsHalfAsStrongAsItWas() {
+        assertEquals(.5f, SoundEffects.EXCITER_MAX, 0f);
     }
 }

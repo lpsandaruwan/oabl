@@ -67,6 +67,8 @@ public final class EqualizerActivity extends Activity {
     private Handler spectrumWorker;
     private Visualizer visualizer;
     private final Runnable apply = () -> {
+        // On disk before the other processes are told: they read the profile from the file.
+        profile.flush();
         SoundEqualizerService.refresh(this);
         MusicClient.get(this).effectsChanged();
         updateStatus();
@@ -589,6 +591,16 @@ public final class EqualizerActivity extends Activity {
             addPresetCard(name, curveValues, EqualizerProfile.FREQUENCIES, name.equals(current), () -> {
                 remember();
                 profile.preset(index);
+                profile.flush();
+                renderAll();
+                scheduleApply();
+            }, null);
+        }
+        float[] lastCustom = profile.lastCustomCurve();
+        if (lastCustom != null && !"Custom".equals(current)) {
+            addPresetCard("Custom", lastCustom, EqualizerProfile.FREQUENCIES, false, () -> {
+                remember();
+                profile.applyLastCustom();
                 profile.flush();
                 renderAll();
                 scheduleApply();

@@ -14,3 +14,8 @@ How it works (launcher 0.1.121):
    Dark, pick Night; with the launcher on Auto, leave it on Automatic.
 
 The theme only re-resolves while the launcher is on screen, so a switch at dusk reaches Maps the next time Home is shown.
+
+Why the picture-in-picture stays dark: it shows Maps' guidance view, which ignores Android's night mode and has the Color scheme
+setting above. If that was set to **Night** to test, the picture-in-picture is dark in the day too: set it back to **Automatic**
+(it then follows the sun at the car's position, so it can differ from a launcher on Auto, which follows the car's cabin
+illumination). Nothing outside Maps can change that setting without driving Maps' own screen.
