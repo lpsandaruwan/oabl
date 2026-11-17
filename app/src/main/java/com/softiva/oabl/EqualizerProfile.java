@@ -52,42 +52,49 @@ final class EqualizerProfile {
      * In 0.1.110 each was refitted onto the 31 bands (scripts/eq-presets/thirty_one.py) so it plays
      * within 0.62 dB of the 14-band version. Judged by ear once, on 0.1.109 (Nu Metal).
      */
-    static final String[] PRESETS = {"Flat", "Car", "Nu Metal", "Heavy", "Vocals", "Smooth"};
+    static final String[] PRESETS = {"Flat", "Pop", "Rock", "Jazz", "Classical", "Dance", "EDM", "Hip-Hop", "Heavy Metal", "Acoustic", "Vocals", "Bass Boost", "Treble Boost", "V Curve", "Car", "Nu Metal", "Heavy", "Smooth"};
     // 0.1.109: the owner heard vocals and guitars "tubed", like cheap boxed midrange speakers, on the
     // 0.1.108 curves, which cut 2.5–4 kHz and left 630 Hz–1.6 kHz flat. Now the boxy 400 Hz–1.3 kHz
     // zone comes down and the 2.5–6.3 kHz presence zone, where voices and guitars get their bite,
     // comes up relative to it. Bass and air are unchanged; the owner liked them.
     // 20 25 31.5 40 50 63 80 100 125 160 200 250 315 400 500 630 800 1k 1.25k 1.6k 2k 2.5k 3.15k 4k 5k 6.3k 8k 10k 12.5k 16k 20k
     private static final float[][] CURVES = {
-            new float[31],
-            // Car: kick and bass lift where door speakers still play (60–110 Hz), the boxy mids down,
-            // presence and top up.
-            {0, 0, 0, .5f, 1.5f, 3, 4, 3.5f, 1.5f, .5f, 0, -1, -1, -1.5f, -1.5f, -2, -2, -2, -1.5f, -.5f, 0, .5f, 1, 1.5f, 1.5f, 1, 1, 1.5f, 1.5f, 1.5f, 1.5f},
-            // Nu Metal (Linkin Park): more kick, drop-D mud and the 630 Hz–1 kHz honk down,
-            // presence up a little less than Car (those masters already run +2 dB at 1.6–4 kHz).
-            {.5f, .5f, .5f, 1, 2, 3.5f, 4.5f, 4, 1, 0, -.5f, -1.5f, -1.5f, -2, -2, -2.5f, -2.5f, -2, -1.5f, -.5f, 0, .5f, 1, 1, 1, 1, 1.5f, 1.5f, 1.5f, 1.5f, 1.5f},
-            // Heavy (Slipknot): those masters run 2–5 dB hotter than pop at 1.6–6.3 kHz, so presence
-            // stays slightly down; the mids come down more, so it still sounds less boxy.
-            {-1, -1, -.5f, 0, 1, 2.5f, 4, 3.5f, .5f, -.5f, -1, -2, -2, -2.5f, -2.5f, -2.5f, -2.5f, -2, -1.5f, -1, -1, -.5f, -.5f, -1, -1, -1, -.5f, 0, 0, .5f, .5f},
-            // Vocals: the boxy zone down, 2.5–4 kHz up, so words cut through at speed.
-            {-1, -1, -.5f, -.5f, -.5f, 0, .5f, .5f, 0, .5f, 0, -1, -1, -1.5f, -1.5f, -2, -2, -1.5f, -1, 0, .5f, 1.5f, 1.5f, 1.5f, 1, .5f, 0, 0, 0, 0, 0},
-            // Smooth: long drives, a gentle downward tilt with a small mid dip.
-            {0, 0, .5f, 1, 1.5f, 2, 2.5f, 2.5f, 1.5f, .5f, .5f, 0, 0, -1, -1, -1, -1, -1, -1, -.5f, -.5f, -1, -1.5f, -1.5f, -1.5f, -2, -2.5f, -3, -3, -3, -3}
-    };
-    /**
-     * The exciter each preset sets: amount, and the frequency it starts from. Heavy and Smooth keep it
-     * off: Slipknot masters already run hot at 1.6–6.3 kHz, and Smooth is for long drives. 0.1.111's
-     * virtual bass, deep bass and boom control were heard in the car and removed in 0.1.112. The
-     * third value is Xciter's psychoacoustic Bass in dB; no preset turns it on, since the car has
-     * not heard it yet.
-     */
-    private static final float[][] PRESET_EFFECTS = {
-            {0, 1500, 0, 0, 0},
-            {.15f, 1500, 0, 0, 0},
-            {.1f, 1500, 0, 0, 0},
-            {0, 1500, 0, 0, 0},
-            {.2f, 1500, 0, 0, 0},
-            {0, 1500, 0, 0, 0},
+            // Flat
+            {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+            // Pop
+            {-1, -1, -1, -0.5f, 0.5f, 1, 1.5f, 2, 2, 2, 2, 2, 1.5f, 1, 1, 0.5f, 0, 0, 0, 1, 1, 1, 1.5f, 2, 2, 2, 2, 2, 1.5f, 1.5f, 1.5f},
+            // Rock
+            {3.5f, 3.5f, 3.5f, 3.5f, 3, 3, 2.5f, 2, 2, 1.5f, 1, 1, 0.5f, -0.5f, -1, -1, -1.5f, -1.5f, -1, -0.5f, 0, 0.5f, 1.5f, 2, 2, 2.5f, 3, 3, 3, 3, 3},
+            // Jazz
+            {2, 2, 2, 2, 1.5f, 1.5f, 1.5f, 1, 1, 1, 1.5f, 1.5f, 1, 0, -0.5f, -0.5f, -0.5f, -0.5f, -0.5f, 0, 0, 0, 0.5f, 1, 1, 1.5f, 2, 2, 2.5f, 2.5f, 2.5f},
+            // Classical
+            {0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0, 0, -0.5f, -1, -1, -1, -0.5f, -0.5f, -0.5f, 0, 0, 0, 0, 0, 0, 0.5f, 0.5f, 0.5f, 1, 1.5f, 1.5f, 1.5f, 1.5f, 1.5f},
+            // Dance
+            {4.5f, 4.5f, 4.5f, 4.5f, 4, 4, 3.5f, 2.5f, 2, 1.5f, 0.5f, 0, 0, -0.5f, -0.5f, -1, -1.5f, -1.5f, -1.5f, -1.5f, -1.5f, -1, -0.5f, 0, 0, 0.5f, 1, 1, 1.5f, 1.5f, 1.5f},
+            // EDM
+            {5, 5, 5, 5, 5, 5, 4.5f, 3.5f, 3, 2, 0.5f, 0, -0.5f, -1, -1, -1, -1.5f, -1.5f, -1, -0.5f, 0, 0.5f, 1, 1.5f, 2, 2.5f, 3, 3, 3.5f, 4, 4},
+            // Hip-Hop
+            {5.5f, 5.5f, 5.5f, 5, 5, 4.5f, 4, 2.5f, 2, 2, 1.5f, 1.5f, 1, 0, -0.5f, -0.5f, -0.5f, -0.5f, 0, 0.5f, 1, 1, 0.5f, 0, 0, 0.5f, 1, 1, 1.5f, 2, 2},
+            // Heavy Metal
+            {3.5f, 3.5f, 3.5f, 3.5f, 3, 3, 2.5f, 1.5f, 1, 0.5f, -1, -1.5f, -2, -2.5f, -2.5f, -2.5f, -2, -2, -1.5f, -0.5f, 0, 0.5f, 2, 2.5f, 2.5f, 3, 3.5f, 3.5f, 3, 2.5f, 2.5f},
+            // Acoustic
+            {2.5f, 2.5f, 2.5f, 2.5f, 2.5f, 2.5f, 2.5f, 2, 2, 1.5f, 1, 0.5f, 0.5f, 1, 1, 1, 1, 1, 1, 1.5f, 1.5f, 1.5f, 2, 2, 2, 2, 2, 2, 1.5f, 1, 1},
+            // Vocals
+            {-2, -2, -2, -2, -2, -2, -2, -1.5f, -1.5f, -1, -0.5f, 0, 0.5f, 1, 1.5f, 2, 2.5f, 2.5f, 2.5f, 3, 3, 3, 2.5f, 2, 1.5f, 1, 0.5f, 0.5f, 0, -0.5f, -0.5f},
+            // Bass Boost
+            {5.5f, 5.5f, 5.5f, 5.5f, 5, 5, 4.5f, 4, 3.5f, 3, 2, 1.5f, 1, 0.5f, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+            // Treble Boost
+            {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.5f, 0.5f, 0.5f, 1.5f, 1.5f, 2, 2.5f, 3, 3.5f, 4, 4.5f, 4.5f, 5, 5.5f, 5.5f},
+            // V Curve
+            {5.5f, 5.5f, 5.5f, 5, 5, 4.5f, 4, 3, 2.5f, 1.5f, 0, -1, -1.5f, -2.5f, -3, -3, -3.5f, -3.5f, -3, -2.5f, -2, -1, 0.5f, 1.5f, 2, 3.5f, 4, 4.5f, 5, 5.5f, 5.5f},
+            // Car
+            {0, 0, 0, 0.5f, 1.5f, 3, 4, 3.5f, 1.5f, 0.5f, 0, -1, -1, -1.5f, -1.5f, -2, -2, -2, -1.5f, -0.5f, 0, 0.5f, 1, 1.5f, 1.5f, 1, 1, 1.5f, 1.5f, 1.5f, 1.5f},
+            // Nu Metal
+            {0.5f, 0.5f, 0.5f, 1, 2, 3.5f, 4.5f, 4, 1, 0, -0.5f, -1.5f, -1.5f, -2, -2, -2.5f, -2.5f, -2, -1.5f, -0.5f, 0, 0.5f, 1, 1, 1, 1, 1.5f, 1.5f, 1.5f, 1.5f, 1.5f},
+            // Heavy
+            {-1, -1, -0.5f, 0, 1, 2.5f, 4, 3.5f, 0.5f, -0.5f, -1, -2, -2, -2.5f, -2.5f, -2.5f, -2.5f, -2, -1.5f, -1, -1, -0.5f, -0.5f, -1, -1, -1, -0.5f, 0, 0, 0.5f, 0.5f},
+            // Smooth
+            {0, 0, 0.5f, 1, 1.5f, 2, 2.5f, 2.5f, 1.5f, 0.5f, 0.5f, 0, 0, -1, -1, -1, -1, -1, -1, -0.5f, -0.5f, -1, -1.5f, -1.5f, -1.5f, -2, -2.5f, -3, -3, -3, -3}
     };
     /** Built-in presets before 0.1.108; a profile still naming one is shown as Custom. */
     private static final java.util.Set<String> RETIRED_PRESETS = new java.util.HashSet<>(java.util.Arrays.asList(
@@ -323,15 +330,23 @@ final class EqualizerProfile {
     }
     String preset() {
         String name = preferences.getString("preset", "Flat");
-        return RETIRED_PRESETS.contains(name) ? "Custom" : name;
+        if (RETIRED_PRESETS.contains(name)) return "Custom";
+        // A saved name whose curve is no longer that preset's (the tables were replaced in 0.1.131) is the user's own curve.
+        for (int i = 0; i < PRESETS.length; i++) {
+            if (!PRESETS[i].equals(name)) continue;
+            float[] table = CURVES[i];
+            for (int band = 0; band < table.length; band++) if (Math.abs(gain(band) - table[band]) > .01f) return "Custom";
+        }
+        return name;
     }
-    /** A built-in preset: its curve and its effects. What was being edited as Custom is kept, so the Custom card brings it back. */
+    /**
+     * A built-in preset: its curve only. The equalizer is its own: effects belong to the sound profiles (Gentle, Signature, Bold,
+     * Custom), so choosing a preset never changes them. What was being edited as Custom is kept, so "Custom" in the list brings it back.
+     */
     void preset(int index) {
         stashCustom();
-        setEffects(PRESET_EFFECTS[index]);
         writeStandard(presetCurve(index), PRESETS[index]);
     }
-    static float[] presetEffects(int index) { return PRESET_EFFECTS[index].clone(); }
     static float[] presetCurve(int index) {
         return CURVES[index].clone();
     }
@@ -378,7 +393,7 @@ final class EqualizerProfile {
     }
 
     void saveCustom(String name) {
-        putCustom(name, gains(), effects());
+        putCustom(name, gains(), null);
         preferences.edit().putString("preset", name).apply();
     }
 
@@ -428,8 +443,6 @@ final class EqualizerProfile {
         float[] curve = customCurve(name);
         if (curve == null) return;
         stashCustom();
-        float[] effects = customEffects(name);
-        if (effects != null) setEffects(effects);
         writeStandard(curve, name);
     }
 
@@ -450,7 +463,7 @@ final class EqualizerProfile {
     /** Exciter amount, exciter Hz, bass dB, Crystalizer, Even out, in that order. Headroom and Dither are not part of a preset. */
     static final int EFFECTS = 5;
     float exciter() { return clamp(preferences.getFloat("fx_exciter", 0), 0, 1); }
-    void setExciter(float value) { preferences.edit().putFloat("fx_exciter", clamp(value, 0, 1)).apply(); }
+    void setExciter(float value) { preferences.edit().putFloat("fx_exciter", clamp(value, 0, 1)).apply(); settle(); }
     /**
      * Where the exciter's harmonics are made from. 0.1.125 changed what the setting means (the harmonics now
      * always land at 10 kHz and up), so an earlier choice is replaced once by 1.5 kHz, the new default.
@@ -462,10 +475,88 @@ final class EqualizerProfile {
         }
         return SoundEffects.nearest(SoundEffects.EXCITER_HZ, preferences.getFloat("fx_exciter_hz", 1500));
     }
-    void setExciterHz(float value) { preferences.edit().putFloat("fx_exciter_hz", SoundEffects.nearest(SoundEffects.EXCITER_HZ, value)).apply(); }
+    void setExciterHz(float value) { preferences.edit().putFloat("fx_exciter_hz", SoundEffects.nearest(SoundEffects.EXCITER_HZ, value)).apply(); settle(); }
     /** Xciter's Bass: the 40-90 Hz band's overtones plus a gentle bell, in dB (0 is off). */
     float bass() { return clamp(preferences.getFloat("fx_bass_db", 0), 0, SoundEffects.BASS_MAX_DB); }
-    void setBass(float value) { preferences.edit().putFloat("fx_bass_db", clamp(value, 0, SoundEffects.BASS_MAX_DB)).apply(); }
+    void setBass(float value) { preferences.edit().putFloat("fx_bass_db", clamp(value, 0, SoundEffects.BASS_MAX_DB)).apply(); settle(); }
+
+    // ---- Sound profiles: Gentle, Signature and Bold are fixed; any change to the seven values makes it Custom ----
+
+    static final String[] MODES = {"gentle", "signature", "bold", "custom"};
+    static final String[] MODE_NAMES = {"Gentle", "Signature", "Bold", "Custom"};
+    /**
+     * Exciter 0..1, bass dB, Crystalizer 0..1, then the frequencies that go with them: the exciter processes from and plays its
+     * harmonics from, the bass band from and its harmonics above (Hz). The same table as Xciter's: Gentle is narrower, higher and
+     * tighter; Bold is wider, lower and fuller; Signature is the middle. Custom starts with nothing added.
+     */
+    static final float[][] MODE_VALUES = {
+            {.10f, 1f, .05f, 3500, 10000, 50, 120},
+            {.30f, 2f, .15f, 2500, 8000, 40, 100},
+            {.50f, 2f, .25f, 1500, 6000, 30, 80},
+            {0, 0, 0, 2500, 8000, 40, 100}};
+
+    static int modeIndex(String mode) {
+        for (int i = 0; i < MODES.length; i++) if (MODES[i].equals(mode)) return i;
+        return 3;
+    }
+
+    /** The named profile (not Custom) these seven values are, or null. */
+    static String namedMode(float[] live) {
+        for (int i = 0; i < 3; i++) {
+            float[] v = MODE_VALUES[i];
+            if (Math.abs(live[0] - v[0]) < .005f && Math.abs(live[1] - v[1]) < .05f && Math.abs(live[2] - v[2]) < .005f
+                    && live[3] == v[3] && live[4] == v[4] && live[5] == v[5] && live[6] == v[6]) return MODES[i];
+        }
+        return null;
+    }
+
+    private float[] liveValues() { return new float[]{exciter(), bass(), crystal(), exciterHz(), airHz(), bassBandHz(), bassAirHz()}; }
+
+    /** The profile chosen. Without a saved choice it is the named profile the saved values match, or Custom (which keeps them). */
+    String mode() {
+        String saved = preferences.getString("fx_mode", null);
+        if (saved != null) return saved;
+        String found = namedMode(liveValues());
+        String mode = found != null ? found : "custom";
+        preferences.edit().putString("fx_mode", mode).apply();
+        if (found == null) saveCustomValues();
+        return mode;
+    }
+
+    int modeIndex() { return modeIndex(mode()); }
+
+    /** After a change to the seven values: a named profile that no longer matches becomes Custom, which keeps the values. */
+    private void settle() {
+        String mode = mode();
+        if (!"custom".equals(mode) && !mode.equals(namedMode(liveValues()))) {
+            preferences.edit().putString("fx_mode", "custom").apply();
+            mode = "custom";
+        }
+        if ("custom".equals(mode)) saveCustomValues();
+    }
+
+    private void saveCustomValues() {
+        float[] v = liveValues();
+        preferences.edit().putFloat("fx_custom_exciter", v[0]).putFloat("fx_custom_bass", v[1]).putFloat("fx_custom_crystal", v[2])
+                .putFloat("fx_custom_start_hz", v[3]).putFloat("fx_custom_air_hz", v[4])
+                .putFloat("fx_custom_bass_band_hz", v[5]).putFloat("fx_custom_bass_air_hz", v[6]).apply();
+    }
+
+    /** Chooses a profile: the named ones load their fixed values, Custom loads what was last chosen. Nothing else changes. */
+    void selectMode(String next) {
+        int index = modeIndex(next);
+        float[] v;
+        if (index == 3) {
+            float[] start = MODE_VALUES[3];
+            v = new float[]{preferences.getFloat("fx_custom_exciter", start[0]), preferences.getFloat("fx_custom_bass", start[1]),
+                    preferences.getFloat("fx_custom_crystal", start[2]), preferences.getFloat("fx_custom_start_hz", start[3]),
+                    preferences.getFloat("fx_custom_air_hz", start[4]), preferences.getFloat("fx_custom_bass_band_hz", start[5]),
+                    preferences.getFloat("fx_custom_bass_air_hz", start[6])};
+        } else v = MODE_VALUES[index];
+        preferences.edit().putString("fx_mode", MODES[index]).putFloat("fx_exciter", v[0]).putFloat("fx_bass_db", v[1])
+                .putFloat("fx_crystal", v[2]).putFloat("fx_exciter_hz", v[3]).putBoolean("fx_air", true)
+                .putFloat("fx_air_hz", v[4]).putFloat("fx_bass_band_hz", v[5]).putFloat("fx_bass_air_hz", v[6]).apply();
+    }
 
     /**
      * Even out, 0..1: pulls quiet passages up and loud ones down toward one level. Like Headroom it is
@@ -479,17 +570,17 @@ final class EqualizerProfile {
      * without the harmonics the exciter makes. Global like Even out, not part of a preset.
      */
     float crystal() { return clamp(preferences.getFloat("fx_crystal", 0), 0, 1); }
-    void setCrystal(float value) { preferences.edit().putFloat("fx_crystal", clamp(value, 0, 1)).apply(); }
+    void setCrystal(float value) { preferences.edit().putFloat("fx_crystal", clamp(value, 0, 1)).apply(); settle(); }
 
     /** Where the exciter's harmonics start to be played, in Hz (6, 8, 10 or 12 kHz; 8 kHz default). Global, not part of a preset. */
     float airHz() { return SoundEffects.nearest(SoundEffects.AIR_HZ, preferences.getFloat("fx_air_hz", SoundEffects.AIR_DEFAULT_HZ)); }
-    void setAirHz(float value) { preferences.edit().putFloat("fx_air_hz", SoundEffects.nearest(SoundEffects.AIR_HZ, value)).apply(); }
+    void setAirHz(float value) { preferences.edit().putFloat("fx_air_hz", SoundEffects.nearest(SoundEffects.AIR_HZ, value)).apply(); settle(); }
 
     /** Bass: the low edge of the band its overtones are made from (30, 40, 50 or 60 Hz) and where they start to be played (80, 100, 120 or 150 Hz). Global. */
     float bassBandHz() { return SoundEffects.nearest(SoundEffects.BASS_BAND_HZ, preferences.getFloat("fx_bass_band_hz", SoundEffects.BASS_BAND_DEFAULT_HZ)); }
-    void setBassBandHz(float value) { preferences.edit().putFloat("fx_bass_band_hz", SoundEffects.nearest(SoundEffects.BASS_BAND_HZ, value)).apply(); }
+    void setBassBandHz(float value) { preferences.edit().putFloat("fx_bass_band_hz", SoundEffects.nearest(SoundEffects.BASS_BAND_HZ, value)).apply(); settle(); }
     float bassAirHz() { return SoundEffects.nearest(SoundEffects.BASS_AIR_HZ, preferences.getFloat("fx_bass_air_hz", SoundEffects.BASS_AIR_DEFAULT_HZ)); }
-    void setBassAirHz(float value) { preferences.edit().putFloat("fx_bass_air_hz", SoundEffects.nearest(SoundEffects.BASS_AIR_HZ, value)).apply(); }
+    void setBassAirHz(float value) { preferences.edit().putFloat("fx_bass_air_hz", SoundEffects.nearest(SoundEffects.BASS_AIR_HZ, value)).apply(); settle(); }
 
     float[] effects() { return new float[]{exciter(), exciterHz(), bass(), crystal(), even()}; }
     void setEffects(float[] values) {

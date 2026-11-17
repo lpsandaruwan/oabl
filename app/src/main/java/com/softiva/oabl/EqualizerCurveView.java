@@ -293,16 +293,14 @@ final class EqualizerCurveView extends View {
         paint.setStrokeWidth(dp(2.5f));
         c.drawPath(editedLine, paint);
         paint.setStyle(Paint.Style.FILL);
-        float small = xs.length > 15 ? 3 : 4;
-        for (int i = 0; i < xs.length; i++) {
-            if (i == selected) {
-                paint.setColor((palette.accent & 0x00ffffff) | 0x28000000);
-                c.drawCircle(xs[i], ys[i], dp(19), paint);
-            }
+        // One dot only: the active band (the one selected or being dragged), with its halo. The rest is just the line.
+        if (selected < xs.length) {
+            paint.setColor((palette.accent & 0x00ffffff) | 0x28000000);
+            c.drawCircle(xs[selected], ys[selected], dp(19), paint);
             paint.setColor(palette.accent);
-            c.drawCircle(xs[i], ys[i], dp(i == selected ? 7 : small), paint);
+            c.drawCircle(xs[selected], ys[selected], dp(7), paint);
             paint.setColor(palette.light ? 0xffe9eef2 : 0xff151e28);
-            c.drawCircle(xs[i], ys[i], dp(i == selected ? 3 : 1.5f), paint);
+            c.drawCircle(xs[selected], ys[selected], dp(3), paint);
         }
     }
 }

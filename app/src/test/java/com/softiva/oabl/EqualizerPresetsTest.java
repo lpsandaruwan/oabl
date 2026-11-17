@@ -32,7 +32,7 @@ public class EqualizerPresetsTest {
         for (int i = 1; i < BANDS; i++) assertTrue(EqualizerProfile.FREQUENCIES[i] > EqualizerProfile.FREQUENCIES[i - 1]);
     }
 
-    @Test public void everyPresetHasACurveOnTheThirtyOneBandsAndItsEffects() {
+    @Test public void everyPresetHasACurveOnTheThirtyOneBands() {
         assertEquals("Flat", EqualizerProfile.PRESETS[0]);
         for (int i = 0; i < EqualizerProfile.PRESETS.length; i++) {
             float[] curve = EqualizerProfile.presetCurve(i);
@@ -41,26 +41,32 @@ public class EqualizerPresetsTest {
                 assertTrue(Math.abs(gain) <= EqualizerProfile.STYLE_DB);
                 assertEquals("0.5 dB steps", 0f, gain * 2 - Math.round(gain * 2), 0f);
             }
-            float[] fx = EqualizerProfile.presetEffects(i);
-            assertEquals(EqualizerProfile.EFFECTS, fx.length);
-            assertTrue(fx[0] >= 0 && fx[0] <= 1);
-            assertEquals(SoundEffects.nearest(SoundEffects.EXCITER_HZ, fx[1]), fx[1], 0f);
-            assertEquals("no preset turns the Bass on", 0f, fx[2], 0f);
         }
         for (float gain : EqualizerProfile.presetCurve(0)) assertEquals(0f, gain, 0f);
-        float[] flat = EqualizerProfile.presetEffects(0);
-        assertEquals("Flat runs no exciter", 0f, flat[0], 0f);
     }
 
-    /** Slipknot masters already run hot at 1.6–6.3 kHz: Heavy adds no exciter. */
-    @Test public void heavyAddsNoExciter() {
-        float[] fx = EqualizerProfile.presetEffects(java.util.Arrays.asList(EqualizerProfile.PRESETS).indexOf("Heavy"));
-        assertEquals(0f, fx[0], 0f);
+    @Test public void theListHasTheGenresTheVCurveAndTheOnesTunedInTheCar() {
+        java.util.List<String> names = java.util.Arrays.asList(EqualizerProfile.PRESETS);
+        for (String name : new String[]{"Flat", "Pop", "Rock", "Jazz", "Classical", "Dance", "EDM", "Hip-Hop", "Heavy Metal", "Acoustic", "Vocals",
+                "Bass Boost", "Treble Boost", "V Curve", "Car", "Nu Metal", "Heavy", "Smooth"}) assertTrue(name, names.contains(name));
+        float[] v = EqualizerProfile.presetCurve(names.indexOf("V Curve"));
+        assertTrue(v[0] >= 5 && v[30] >= 5);
+        assertTrue("1 kHz scooped", v[band(1000)] <= -3);
+    }
+
+    @Test public void everyPresetIsItsOwnShape() {
+        for (int i = 0; i < EqualizerProfile.PRESETS.length; i++) {
+            for (int k = i + 1; k < EqualizerProfile.PRESETS.length; k++) {
+                assertFalse(EqualizerProfile.PRESETS[i] + " = " + EqualizerProfile.PRESETS[k],
+                        java.util.Arrays.equals(EqualizerProfile.presetCurve(i), EqualizerProfile.presetCurve(k)));
+            }
+        }
     }
 
     @Test public void presetCurvesAreCopies() {
+        float before = EqualizerProfile.presetCurve(1)[6];
         EqualizerProfile.presetCurve(1)[6] = 99;
-        assertEquals(4f, EqualizerProfile.presetCurve(1)[6], 0f);
+        assertEquals(before, EqualizerProfile.presetCurve(1)[6], 0f);
     }
 
     /** Why the engine doesn't set the 31 bands as they are: five of them would own no FFT bin. */
@@ -104,9 +110,16 @@ public class EqualizerPresetsTest {
     }
 
     /** Refitted in 0.1.110 (scripts/eq-presets/thirty_one.py): bin by bin, close to what the 14 bands played. */
+    /** The presets tuned in the car keep their sound; the genre presets (0.1.131) have no fourteen-band version. */
+    private static final String[] CAR_TUNED = {"Flat", "Car", "Nu Metal", "Heavy", "Smooth"};
+    private static final int[] FOURTEEN_OF = {0, 1, 2, 3, 5};
+
+    private static int presetIndex(String name) { return java.util.Arrays.asList(EqualizerProfile.PRESETS).indexOf(name); }
+
     @Test public void eachPresetPlaysLikeItsFourteenBandVersion() {
-        for (int p = 1; p < EqualizerProfile.PRESETS.length; p++) {
-            float[] was = EqualizerProfile.binGains(EqualizerProfile.FOURTEEN_FREQUENCIES, FOURTEEN[p]);
+        for (int n = 1; n < CAR_TUNED.length; n++) {
+            int p = presetIndex(CAR_TUNED[n]);
+            float[] was = EqualizerProfile.binGains(EqualizerProfile.FOURTEEN_FREQUENCIES, FOURTEEN[FOURTEEN_OF[n]]);
             float[] now = EqualizerProfile.binGains(EqualizerProfile.FREQUENCIES, EqualizerProfile.bandGains(EqualizerProfile.presetCurve(p)));
             double sum = 0, weight = 0, worst = 0;
             for (int bin = 1; bin <= TOP_BIN; bin++) {
@@ -123,9 +136,9 @@ public class EqualizerPresetsTest {
 
     /** The move to format 6 recognises an untouched built-in preset and gives it the refitted curve. */
     @Test public void aFourteenBandPresetIsRecognisedAfterTheMove() {
-        for (int p = 0; p < EqualizerProfile.PRESETS.length; p++) {
-            assertTrue(EqualizerProfile.PRESETS[p], EqualizerProfile.soundsAlike(
-                    EqualizerProfile.fromFourteen(FOURTEEN[p]), EqualizerProfile.presetCurve(p)));
+        for (int n = 0; n < CAR_TUNED.length; n++) {
+            assertTrue(CAR_TUNED[n], EqualizerProfile.soundsAlike(
+                    EqualizerProfile.fromFourteen(FOURTEEN[FOURTEEN_OF[n]]), EqualizerProfile.presetCurve(presetIndex(CAR_TUNED[n]))));
         }
         assertFalse(EqualizerProfile.soundsAlike(EqualizerProfile.fromFourteen(FOURTEEN[2]), EqualizerProfile.presetCurve(0)));
     }
@@ -151,7 +164,8 @@ public class EqualizerPresetsTest {
 
     /** 0.1.108 sounded "tubed": no preset may leave the boxy 630 Hz–1 kHz zone above the 2.5–4 kHz presence zone. */
     @Test public void theBoxyMidsSitBelowThePresenceZone() {
-        for (int i = 1; i < EqualizerProfile.PRESETS.length; i++) {
+        for (int n = 1; n < CAR_TUNED.length; n++) {
+            int i = presetIndex(CAR_TUNED[n]);
             float[] curve = EqualizerProfile.presetCurve(i);
             float boxy = Math.max(at(curve, 630), Math.max(at(curve, 800), at(curve, 1000)));
             float presence = Math.max(at(curve, 2500), Math.max(at(curve, 3150), at(curve, 4000)));
@@ -201,5 +215,35 @@ public class EqualizerPresetsTest {
         assertEquals(0f, EqualizerProfile.inputGain(0, curve, false), 0f);
         assertEquals(2f, EqualizerProfile.inputGain(2, curve, false), 0f);
         assertEquals(EqualizerProfile.inputGain(0, curve), EqualizerProfile.inputGain(0, curve, true), 0f);
+    }
+
+    // ---- Sound profiles ----
+
+    @Test public void theProfilesHoldTheAgreedValuesAndFrequencies() {
+        float[][] v = EqualizerProfile.MODE_VALUES;
+        assertArrayEquals(new float[]{.10f, 1f, .05f, 3500, 10000, 50, 120}, v[0], 1e-6f);
+        assertArrayEquals(new float[]{.30f, 2f, .15f, 2500, 8000, 40, 100}, v[1], 1e-6f);
+        assertArrayEquals(new float[]{.50f, 2f, .25f, 1500, 6000, 30, 80}, v[2], 1e-6f);
+        assertArrayEquals("Custom starts with nothing added, at the middle frequencies", new float[]{0, 0, 0, 2500, 8000, 40, 100}, v[3], 0f);
+    }
+
+    @Test public void everyProfileFrequencyIsOneThePickerOffers() {
+        for (float[] v : EqualizerProfile.MODE_VALUES) {
+            assertEquals(v[3], SoundEffects.nearest(SoundEffects.EXCITER_HZ, v[3]), 0f);
+            assertEquals(v[4], SoundEffects.nearest(SoundEffects.AIR_HZ, v[4]), 0f);
+            assertEquals(v[5], SoundEffects.nearest(SoundEffects.BASS_BAND_HZ, v[5]), 0f);
+            assertEquals(v[6], SoundEffects.nearest(SoundEffects.BASS_AIR_HZ, v[6]), 0f);
+        }
+    }
+
+    @Test public void aSoundThatMatchesANamedProfileIsThatProfileAndAnyOtherChangeIsNot() {
+        for (int i = 0; i < 3; i++) assertEquals(EqualizerProfile.MODES[i], EqualizerProfile.namedMode(EqualizerProfile.MODE_VALUES[i]));
+        float[] signature = EqualizerProfile.MODE_VALUES[1];
+        for (int i = 0; i < 7; i++) {
+            float[] changed = signature.clone();
+            changed[i] += i == 0 || i == 2 ? .05f : i == 1 ? .5f : 500;
+            assertNull("value " + i, EqualizerProfile.namedMode(changed));
+        }
+        assertNull(EqualizerProfile.namedMode(EqualizerProfile.MODE_VALUES[3]));
     }
 }

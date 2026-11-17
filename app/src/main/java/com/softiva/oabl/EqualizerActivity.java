@@ -56,6 +56,8 @@ public final class EqualizerActivity extends Activity {
     private EqualizerSlidersView sliders;
     private HorizontalScrollView curveScroll;
     private LinearLayout presetRow;
+    /** The profile tiles, when they sit in the preset row (wide screens). */
+    private LinearLayout profileGroup;
     private final List<TextView[]> segments = new ArrayList<>();
     /** The page below the header: fixed, never scrolled (only the preset strip and curve pan sideways). */
     private LinearLayout page;
@@ -236,12 +238,9 @@ public final class EqualizerActivity extends Activity {
         space(content, 12);
 
         // Preset cards.
-        HorizontalScrollView presetScroll = new HorizontalScrollView(this);
-        presetScroll.setHorizontalScrollBarEnabled(false);
-        presetScroll.setTag("eq_presets");
         presetRow = row();
-        presetScroll.addView(presetRow);
-        content.addView(presetScroll, lp(-1, 72));
+        presetRow.setTag("eq_presets");
+        content.addView(presetRow, lp(-1, 52));
         space(content, 12);
 
         // Every control stays on the page: view, bands, shaping and output.
@@ -330,7 +329,7 @@ public final class EqualizerActivity extends Activity {
             @Override public void committed() { profile.flush(); scheduleApply(); renderPresets(); }
         };
         // The curve takes what the fixed page leaves: header, presets, toolbar, band header and the panels.
-        int chrome = compact ? 470 : 408;
+        int chrome = compact ? 526 : 408;
         int editorHeight = Math.max(120, Math.min(260, getResources().getConfiguration().screenHeightDp - chrome));
         FrameLayout editorFrame = new FrameLayout(this);
         curveScroll = new HorizontalScrollView(this);
@@ -370,9 +369,9 @@ public final class EqualizerActivity extends Activity {
         crystalValue = text("", 15, palette.ink);
         LinearLayout sound = row();
         weighted(sound, sliderCard("BASS · OABL MUSIC", bassValue, "eq_bass", 20, Math.round(profile.bass() * 2),
-                p -> { profile.setBass(p / 2f); markCustom(); }), 2, 0, panelHeight(compact));
+                p -> profile.setBass(p / 2f)), 2, 0, panelHeight(compact));
         weighted(sound, sliderCard("EXCITER · OABL MUSIC", exciterValue, "eq_exciter", 20, Math.round(profile.exciter() * 20),
-                p -> { profile.setExciter(p / 20f); markCustom(); }), 2, 10, panelHeight(compact));
+                p -> profile.setExciter(p / 20f)), 2, 10, panelHeight(compact));
         weighted(sound, sliderCard("EVEN OUT · OABL MUSIC", evenValue, "eq_even", 20, Math.round(profile.even() * 20),
                 p -> profile.setEven(p / 20f)), 2, 10, panelHeight(compact));
         weighted(sound, sliderCard("CRYSTALIZER · OABL MUSIC", crystalValue, "eq_crystal", 20, Math.round(profile.crystal() * 20),
@@ -488,6 +487,25 @@ public final class EqualizerActivity extends Activity {
     private void installPanels(LinearLayout content, boolean compact, View soundPanel, View outputPanel) {
         panels[0] = soundPanel;
         panels[1] = outputPanel;
+        // Sound profiles: the three fixed ones and your own. They set the exciter, the bass and the Crystalizer with their frequencies; the equalizer is separate.
+        profileGroup = segmented(EqualizerProfile.MODE_NAMES, new String[]{"eq_mode_gentle", "eq_mode_signature", "eq_mode_bold", "eq_mode_custom"},
+                () -> profile.modeIndex(), i -> {
+                    profile.selectMode(EqualizerProfile.MODES[i]);
+                    profile.flush();
+                    updateStatus();
+                    scheduleApply();
+                });
+        if (compact) {
+            // Narrow: a row of its own. Wide: it shares the preset row, so the curve keeps its height.
+            LinearLayout profiles = row();
+            profiles.addView(text("SOUND PROFILE", 11, palette.muted), lp(-2, 48));
+            LinearLayout.LayoutParams modesSize = lp(-2, 52);
+            modesSize.leftMargin = dp(14);
+            profiles.addView(profileGroup, modesSize);
+            advanced.addView(profiles);
+            space(advanced, 8);
+            profileGroup = null;
+        } else renderPresets();
         LinearLayout tabs = segmented(new String[]{"Effects", "Output"},
                 new String[]{"eq_panel_sound", "eq_panel_output"},
                 () -> compact ? -1 : shownPanel(),
@@ -571,74 +589,50 @@ public final class EqualizerActivity extends Activity {
         scheduleApply();
     }
 
+    /** The preset drop-down (its name, and a chevron), then Find your sound and Save as. */
     private void renderPresets() {
         if (presetRow == null) return;
         presetRow.removeAllViews();
+        LinearLayout field = row();
+        field.setTag("eq_preset");
+        field.setPadding(dp(18), 0, dp(14), 0);
+        field.setFocusable(true);
+        field.setContentDescription("Equalizer preset, " + profile.preset());
+        field.setBackground(new RippleDrawable(ColorStateList.valueOf(palette.light ? 0x22142e38 : 0x33ffffff),
+                LauncherTheme.rounded(this, palette.light ? 0xffffffff : 0xff19212b, 18, 1, (palette.accent & 0x00ffffff) | 0x55000000), null));
+        field.setOnClickListener(v -> choosePreset());
+        TextView caption = text("PRESET", 11, palette.muted);
+        field.addView(caption);
+        TextView chosen = text(presetLabel(profile.preset()), 16, palette.ink);
+        medium(chosen);
+        chosen.setPadding(dp(12), 0, 0, 0);
+        field.addView(chosen, new LinearLayout.LayoutParams(0, -2, 1));
+        field.addView(text("▾", 18, palette.accent));
+        LinearLayout.LayoutParams fieldSize = new LinearLayout.LayoutParams(0, -1, 1);
+        fieldSize.rightMargin = dp(10);
+        presetRow.addView(field, fieldSize);
+        if (profileGroup != null) {
+            if (profileGroup.getParent() instanceof android.view.ViewGroup) ((android.view.ViewGroup) profileGroup.getParent()).removeView(profileGroup);
+            LinearLayout.LayoutParams groupSize = new LinearLayout.LayoutParams(-2, -1);
+            groupSize.rightMargin = dp(10);
+            presetRow.addView(profileGroup, groupSize);
+        }
         TextView find = presetAction("✦  Find your sound", "eq_find_sound", () -> {
             remember();
             startActivityForResult(new Intent(this, FindSoundActivity.class), FIND_SOUND);
         });
-        find.setTextColor(palette.light ? 0xffffffff : palette.root);
-        find.setBackground(new RippleDrawable(ColorStateList.valueOf(0x33ffffff),
-                LauncherTheme.rounded(this, palette.accent, 18, 0, 0), null));
         find.setContentDescription("Find your sound");
-        presetRow.addView(find, presetParams());
-        String current = profile.preset();
-        for (int i = 0; i < EqualizerProfile.PRESETS.length; i++) {
-            final int index = i;
-            String name = EqualizerProfile.PRESETS[i];
-            float[] curveValues = EqualizerProfile.presetCurve(i);
-            addPresetCard(name, curveValues, EqualizerProfile.FREQUENCIES, name.equals(current), () -> {
-                remember();
-                profile.preset(index);
-                profile.flush();
-                renderAll();
-                scheduleApply();
-            }, null);
-        }
-        float[] lastCustom = profile.lastCustomCurve();
-        if (lastCustom != null && !"Custom".equals(current)) {
-            addPresetCard("Custom", lastCustom, EqualizerProfile.FREQUENCIES, false, () -> {
-                remember();
-                profile.applyLastCustom();
-                profile.flush();
-                renderAll();
-                scheduleApply();
-            }, null);
-        }
-        for (final String name : profile.customPresets()) {
-            float[] values = profile.customCurve(name);
-            if (values == null) continue;
-            addPresetCard(name, values, EqualizerProfile.FREQUENCIES, name.equals(current), () -> {
-                remember();
-                profile.applyCustom(name);
-                profile.flush();
-                renderAll();
-                scheduleApply();
-            }, () -> dialog().setTitle("Delete “" + name + "”?").setMessage("This saved preset will be removed.")
-                    .setNegativeButton("Cancel", null)
-                    .setPositiveButton("Delete", (d, w) -> { profile.deleteCustom(name); profile.flush(); renderPresets(); }).show());
-        }
+        find.setPadding(dp(16), 0, dp(16), 0);
+        LinearLayout.LayoutParams findSize = new LinearLayout.LayoutParams(-2, -1);
+        findSize.rightMargin = dp(10);
+        presetRow.addView(find, findSize);
         TextView save = presetAction("+  Save as…", "eq_save_preset", this::savePreset);
-        presetRow.addView(save, presetParams());
-        TextView more = presetAction("All presets ▾", "eq_preset", this::choosePreset);
-        presetRow.addView(more, presetParams());
+        save.setPadding(dp(16), 0, dp(16), 0);
+        presetRow.addView(save, new LinearLayout.LayoutParams(-2, -1));
     }
 
-    private void addPresetCard(String name, float[] values, float[] hz, boolean chosen, Runnable click, Runnable longClick) {
-        PresetCard card = new PresetCard(name, values, hz, chosen);
-        card.setTag("eq_preset_card_" + name);
-        card.setContentDescription(name + " preset" + (chosen ? ", selected" : ""));
-        card.setOnClickListener(v -> click.run());
-        if (longClick != null) card.setOnLongClickListener(v -> { longClick.run(); return true; });
-        presetRow.addView(card, presetParams());
-    }
-
-    private LinearLayout.LayoutParams presetParams() {
-        LinearLayout.LayoutParams params = lp(150, 72);
-        params.rightMargin = dp(10);
-        return params;
-    }
+    /** The V curve is the special one, so the list says so. */
+    private static String presetLabel(String name) { return "V Curve".equals(name) ? "V Curve ★" : name; }
 
     private TextView presetAction(String label, String tag, Runnable action) {
         TextView view = text(label, 14, palette.accent);
@@ -650,57 +644,6 @@ public final class EqualizerActivity extends Activity {
         view.setOnClickListener(v -> action.run());
         view.setFocusable(true);
         return view;
-    }
-
-    /** Small card with a curve thumbnail; the chosen preset is outlined in the accent colour. */
-    private final class PresetCard extends View {
-        private final String name;
-        private final float[] values, hz;
-        private final boolean chosen;
-        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Path path = new Path();
-
-        PresetCard(String name, float[] values, float[] hz, boolean chosen) {
-            super(EqualizerActivity.this);
-            this.name = name;
-            this.values = values;
-            this.hz = hz;
-            this.chosen = chosen;
-            setClickable(true);
-            setFocusable(true);
-            setBackground(new RippleDrawable(ColorStateList.valueOf(palette.light ? 0x22142e38 : 0x33ffffff),
-                    LauncherTheme.rounded(EqualizerActivity.this, chosen ? (palette.accent & 0x00ffffff) | 0x22000000
-                            : palette.light ? 0xffffffff : 0xff19212b, 18, chosen ? 2 : 0, palette.accent), null));
-            paint.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        }
-
-        @Override
-        protected void onDraw(Canvas c) {
-            super.onDraw(c);
-            float w = getWidth(), h = getHeight(), pad = dp(14);
-            float top = dp(12), bottom = h - dp(34);
-            paint.setStyle(Paint.Style.STROKE);
-            paint.setStrokeWidth(dp(1));
-            paint.setColor(palette.light ? 0x22142e38 : 0x22ffffff);
-            float mid = (top + bottom) / 2;
-            c.drawLine(pad, mid, w - pad, mid, paint);
-            path.reset();
-            for (int i = 0; i < values.length; i++) {
-                float x = pad + (w - 2 * pad) * (float) (Math.log(hz[i] / 20) / Math.log(1000));
-                float y = mid - values[i] * (bottom - top) / 12;
-                if (i == 0) path.moveTo(x, y); else path.lineTo(x, y);
-            }
-            paint.setColor(palette.accent);
-            paint.setStrokeWidth(dp(2));
-            paint.setStrokeJoin(Paint.Join.ROUND);
-            c.drawPath(path, paint);
-            paint.setStyle(Paint.Style.FILL);
-            paint.setTextSize(dp(13));
-            paint.setColor(chosen ? palette.accent : palette.ink);
-            paint.setTextAlign(Paint.Align.LEFT);
-            CharSequence label = TextUtils.ellipsize(name, new android.text.TextPaint(paint), w - 2 * pad, TextUtils.TruncateAt.END);
-            c.drawText(label.toString(), pad, h - dp(13), paint);
-        }
     }
 
     private void updateStatus() {
@@ -747,6 +690,7 @@ public final class EqualizerActivity extends Activity {
         syncBar("eq_bass", profile.bass() / SoundEffects.BASS_MAX_DB);
         syncBar("eq_even", profile.even());
         syncBar("eq_crystal", profile.crystal());
+        for (TextView[] group : segments) styleSegments(group);
         undoButton.setEnabled(!undo.isEmpty());
         undoButton.setAlpha(undo.isEmpty() ? .5f : 1f);
         redoButton.setEnabled(!redo.isEmpty());
@@ -802,17 +746,31 @@ public final class EqualizerActivity extends Activity {
                 }).show();
     }
 
+    /** The presets as a drop-down: genres, the V curve, the ones tuned in the car, those you saved, and Custom (your edited curve) last. */
     private void choosePreset() {
         List<String> names = new ArrayList<>();
         for (String name : EqualizerProfile.PRESETS) names.add(name);
         names.addAll(profile.customPresets());
-        dialog().setTitle("Listening preset").setItems(names.toArray(new String[0]), (d, i) -> {
-            remember();
-            if (i < EqualizerProfile.PRESETS.length) profile.preset(i);
-            else profile.applyCustom(names.get(i));
-            profile.flush();
-            renderAll();
-            scheduleApply();
+        boolean hasCustom = profile.lastCustomCurve() != null || "Custom".equals(profile.preset());
+        if (hasCustom) names.add("Custom");
+        String[] shown = new String[names.size()];
+        int chosen = -1;
+        for (int i = 0; i < shown.length; i++) {
+            shown[i] = presetLabel(names.get(i));
+            if (names.get(i).equals(profile.preset())) chosen = i;
+        }
+        dialog().setTitle("Equalizer preset").setSingleChoiceItems(shown, chosen, (d, i) -> {
+            String name = names.get(i);
+            if (!name.equals(profile.preset())) {
+                remember();
+                if (i < EqualizerProfile.PRESETS.length) profile.preset(i);
+                else if ("Custom".equals(name)) profile.applyLastCustom();
+                else profile.applyCustom(name);
+                profile.flush();
+                renderAll();
+                scheduleApply();
+            }
+            d.dismiss();
         }).setNegativeButton("Cancel", null).show();
     }
 
@@ -867,20 +825,12 @@ public final class EqualizerActivity extends Activity {
         dialog().setTitle(title).setSingleChoiceItems(names, chosen, (x, i) -> {
             remember();
             set.accept(choices[i]);
-            getSharedPreferences("equalizer_profile", MODE_PRIVATE).edit().putString("preset", "Custom").apply();
             profile.flush();
             updateStatus();
             renderPresets();
             scheduleApply();
             x.dismiss();
         }).setNegativeButton("Cancel", null).show();
-    }
-
-    /** Effects belong to presets: moving one makes the sound Custom. */
-    private void markCustom() {
-        if ("Custom".equals(profile.preset())) return;
-        getSharedPreferences("equalizer_profile", MODE_PRIVATE).edit().putString("preset", "Custom").apply();
-        renderPresets();
     }
 
     private static String percent(float amount) { return amount == 0 ? "Off" : Math.round(amount * 100) + "%"; }
