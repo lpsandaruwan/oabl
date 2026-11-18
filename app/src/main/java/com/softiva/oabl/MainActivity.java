@@ -2716,6 +2716,8 @@ public final class MainActivity extends Activity {
     // ---- Trip mode: a trip the owner starts and ends by hand ----
     private ManualTrip manualTripStore;
     private volatile ManualTrip.Summary tripSummary;
+    /** The finished trip shown, worked out again from the event log so it carries every event and the latest rules. */
+    private volatile ManualTrip.Summary tripFinished;
     private volatile ManualTrip.Chart tripChart;
     private String tripKey;
     private long tripAt;
@@ -2755,7 +2757,7 @@ public final class MainActivity extends Activity {
                     : snapshot != null && Double.isFinite(snapshot.lastSoc) ? snapshot.lastSoc : Double.NaN;
             android.location.Location fix = statsFix;
             trip.begin(System.currentTimeMillis(), soc, fix == null ? 0 : fix.getLatitude(), fix == null ? 0 : fix.getLongitude());
-            tripSummary = null; tripKey = null; tripAt = 0;
+            tripSummary = null; tripFinished = null; tripKey = null; tripAt = 0;
             Toast.makeText(this, "Trip started. It runs until you end it.", Toast.LENGTH_LONG).show();
             showStatsPeriod(HomePeriod.TRIP);
             return;
@@ -2779,12 +2781,13 @@ public final class MainActivity extends Activity {
             double capacity = store.profile().usableKwh;
             CarEnergyRepository repository = new CarEnergyRepository(store);
             java.util.List<CarEnergyTracker.Event> events = new java.util.ArrayList<>();
-            for (CarEnergyRepository.Item item : repository.events(start, end > 0 ? end : Long.MAX_VALUE, null, 0)) events.add(item.event);
+            for (CarEnergyRepository.Item item : repository.events(start, Long.MAX_VALUE, null, 0)) events.add(item.event);
             java.util.List<TripComputer.Trip> gps = TripComputer.get(this).history();
             long now = System.currentTimeMillis();
             ManualTrip.Summary summary = ManualTrip.compute(events, gps, start, end, now, capacity, startSoc, endSoc,
                     week == null ? Double.NaN : week.price, week == null ? Double.NaN : week.gridPerPoint, week == null ? "" : week.currency);
-            return new Object[]{summary, ManualTrip.chart(gps, start, end, now, java.util.TimeZone.getDefault())};
+            java.util.List<TripComputer.Trip> bars = ManualTrip.chartTrips(summary);
+            return new Object[]{summary, ManualTrip.chart(bars.isEmpty() ? gps : bars, start, end, now, java.util.TimeZone.getDefault())};
         } catch (RuntimeException failure) {
             android.util.Log.w("OABL", "Trip figures unavailable", failure);
             return null;
@@ -2816,7 +2819,7 @@ public final class MainActivity extends Activity {
             final ManualTrip.Summary finished = summary;
             trip.end(finished);
             handler.post(() -> {
-                tripSummary = null; tripKey = null; tripAt = 0;
+                tripSummary = null; tripFinished = null; tripKey = null; tripAt = 0;
                 Toast.makeText(this, "Trip saved: " + (Double.isFinite(finished.km) ? km(finished.km) + " km" : "no distance") + " · tap SHARE to send it as an image", Toast.LENGTH_LONG).show();
                 showStatsPeriod(HomePeriod.TRIP);
             });
@@ -2828,7 +2831,7 @@ public final class MainActivity extends Activity {
         ManualTrip trip = manualTrip();
         boolean active = trip.active();
         ManualTrip.Summary finished = active ? null : trip.last();
-        if (!active && finished == null) { tripSummary = null; tripChart = null; return; }
+        if (!active && finished == null) { tripSummary = null; tripFinished = null; tripChart = null; return; }
         long tick = android.os.SystemClock.elapsedRealtime();
         String key = active ? "live" : finished.start + ":" + finished.end;
         if (tripLoading || key.equals(tripKey) && (!active || tick - tripAt < 10_000)) return;
@@ -2840,7 +2843,9 @@ public final class MainActivity extends Activity {
             Object[] result = computeTrip(start, end, startSoc, endSoc, week);
             handler.post(() -> {
                 if (result != null) {
-                    if (active) tripSummary = (ManualTrip.Summary) result[0];
+                    ManualTrip.Summary figures = (ManualTrip.Summary) result[0];
+                    if (active) tripSummary = figures;
+                    else tripFinished = mergeSaved(figures, finished);
                     tripChart = (ManualTrip.Chart) result[1];
                 }
                 tripKey = key;
@@ -2850,10 +2855,18 @@ public final class MainActivity extends Activity {
         });
     }
 
+    /** The figures worked out again for a finished trip, with what was saved when it ended: places, and the cost if it cannot be priced now. */
+    private static ManualTrip.Summary mergeSaved(ManualTrip.Summary figures, ManualTrip.Summary saved) {
+        figures.from = saved.from; figures.to = saved.to;
+        if (!Double.isFinite(figures.cost) && Double.isFinite(saved.cost)) figures.cost = saved.cost;
+        if (figures.currency.isEmpty()) figures.currency = saved.currency;
+        return figures;
+    }
+
     private StatsModel tripModel(long now, EnergyWeek week) {
         ManualTrip trip = manualTrip();
         boolean active = trip.active();
-        ManualTrip.Summary s = active ? tripSummary : trip.last();
+        ManualTrip.Summary s = active ? tripSummary : tripFinished != null ? tripFinished : trip.last();
         StatsModel m = new StatsModel();
         m.title = "TRIP";
         if (s == null) {
@@ -2864,27 +2877,9 @@ public final class MainActivity extends Activity {
             m.names = new String[]{""};
             return m;
         }
-        String money = s.currency.isEmpty() ? "" : s.currency;
         String when = (active ? "since " : "") + dayTime(s.start) + (active ? "" : " → " + clockTime(s.end));
         String places = !s.from.isEmpty() && !s.to.isEmpty() ? " · " + s.from + " → " + s.to : "";
-        String socNote = Double.isFinite(s.startSoc) ? Math.round(s.startSoc) + "% → " + (Double.isFinite(s.endSoc) ? Math.round(s.endSoc) + "%" : "…") : "Battery level at the start unknown";
-        m.cells = new DriveStatsView.Cell[]{
-                new DriveStatsView.Cell(active ? "Trip in progress" : "Trip time", duration(s.elapsedSeconds(now) / 60), "").note(when + places),
-                new DriveStatsView.Cell("Distance", Double.isFinite(s.km) ? km(s.km) : "—", "km")
-                        .note(s.drives + (s.drives == 1 ? " drive" : " drives") + (s.kmGps > 0 ? " · GPS " + km(s.kmGps) + " km" : "")),
-                new DriveStatsView.Cell("Moving", duration(s.movingSeconds / 60), "")
-                        .note("Stopped " + duration(s.stoppedSeconds / 60) + (s.idleKwh >= 0.01 ? String.format(Locale.US, " · ≈%.1f kWh idle", s.idleKwh) : "")),
-                new DriveStatsView.Cell("Average speed", Double.isFinite(s.averageKph) ? String.valueOf(Math.round(s.averageKph)) : "—", "km/h")
-                        .note(Double.isFinite(s.peakKph) ? "Top " + Math.round(s.peakKph) + " km/h" : "Moving time only"),
-                new DriveStatsView.Cell("Energy used", Double.isFinite(s.kwh) ? String.format(Locale.US, "%.1f", s.kwh) : "—", "kWh").note(socNote),
-                new DriveStatsView.Cell("Economy", Double.isFinite(s.economy) ? String.format(Locale.US, "%.1f", s.economy) : "—", Double.isFinite(s.economy) ? "kWh/100 km" : "")
-                        .note(Double.isFinite(s.economy) ? "over " + km(s.energyKm) + " km" : "Needs 2 km of linked driving"),
-                new DriveStatsView.Cell("Regen", s.regenKwh >= 0.01 ? "≈" + String.format(Locale.US, "%.1f", s.regenKwh) : "—", s.regenKwh >= 0.01 ? "kWh est." : "")
-                        .note(s.regenKwh >= 0.01 && Double.isFinite(s.kwh) && s.kwh > 0 ? String.format(Locale.US, "≈%.0f%% of the %.1f kWh used", 100 * s.regenKwh / s.kwh, s.kwh) : "Modelled from the car's power"),
-                Double.isFinite(s.cost)
-                        ? new DriveStatsView.Cell("Cost", "≈" + HomeCost.money(s.cost), money).note(s.charges > 0 ? s.charges + (s.charges == 1 ? " charge" : " charges") + String.format(Locale.US, " · +%.1f kWh", s.chargedKwh) : "At the average paid price")
-                        : new DriveStatsView.Cell("Charges", String.valueOf(s.charges), s.charges == 1 ? "charge" : "charges")
-                                .note(s.charges > 0 ? String.format(Locale.US, "+%.1f kWh · +%.0f%%", s.chargedKwh, s.chargedPoints) : "Price a charge to see costs")};
+        m.cells = TripReport.cells(s, now, when, places);
         ManualTrip.Chart chart = tripChart;
         m.bars = chart != null ? chart.km : new double[1];
         m.names = chart != null ? chart.names : new String[]{""};
@@ -2944,16 +2939,8 @@ public final class MainActivity extends Activity {
         if (which == 3) {
             ManualTrip trip = manualTrip();
             if (!trip.active() && trip.last() == null) { toast("No trip yet. Tap START TRIP first."); return; }
-            if (trip.active() && tripSummary == null) { toast("The trip is still being read. Try again in a moment."); return; }
-            StatsModel model = tripModel(now, week);
-            ManualTrip.Summary s = trip.active() ? tripSummary : trip.last();
-            report.title = trip.active() ? "Trip in progress" : "Trip report";
-            report.subtitle = new java.text.SimpleDateFormat("EEE d MMM · HH:mm", Locale.getDefault()).format(new java.util.Date(s.start))
-                    + (s.end > 0 ? " → " + new java.text.SimpleDateFormat("HH:mm", Locale.getDefault()).format(new java.util.Date(s.end)) : " → now")
-                    + (!s.from.isEmpty() && !s.to.isEmpty() ? " · " + s.from + " → " + s.to : "");
-            report.cells = model.cells; report.bars = model.bars; report.names = model.names == null ? new String[0] : model.names;
-            report.chartTitle = model.title; report.chartSum = model.bars.length > 0 && Double.isFinite(s.km) ? "GPS " + km(HomePeriod.sumTail(model.bars, model.bars.length)) + " km" : "";
-            subject = "Trip report"; name = "OABL-trip-" + reportStamp();
+            shareTrip(trip, week, report);
+            return;
         } else {
             HomePeriod period = HomePeriod.fromIndex(which);
             StatsModel model = periodModel(period, week, car, false, null, now);
@@ -2968,6 +2955,41 @@ public final class MainActivity extends Activity {
         }
         final String finalSubject = subject, finalName = name;
         energyLoader.execute(() -> finishShare(ReportImage.render(report), finalSubject, finalName));
+    }
+
+    /** The trip report: a tall picture with every figure and event, and a CSV of the same with all positions. */
+    private void shareTrip(ManualTrip trip, EnergyWeek week, ReportImage.Model report) {
+        final boolean active = trip.active();
+        final ManualTrip.Summary saved = trip.last();
+        final long start = active ? trip.start() : saved.start, end = active ? 0 : saved.end;
+        final double startSoc = active ? trip.startSoc() : saved.startSoc, endSoc = active ? liveSocNow() : saved.endSoc;
+        final String vehicle = report.vehicle;
+        final java.text.DateFormat clock = android.text.format.DateFormat.getTimeFormat(this);
+        final java.text.SimpleDateFormat day = new java.text.SimpleDateFormat("EEE d MMM", Locale.getDefault());
+        energyLoader.execute(() -> {
+            Object[] result = computeTrip(start, end, startSoc, endSoc, week);
+            if (result == null) { handler.post(() -> toast("The trip figures are not available right now.")); return; }
+            long now = System.currentTimeMillis();
+            ManualTrip.Summary s = (ManualTrip.Summary) result[0];
+            if (!active) mergeSaved(s, saved);
+            ManualTrip.Chart chart = (ManualTrip.Chart) result[1];
+            String places = !s.from.isEmpty() && !s.to.isEmpty() ? " · " + s.from + " → " + s.to : "";
+            report.title = active ? "Trip in progress" : "Trip report";
+            report.subtitle = day.format(new java.util.Date(s.start)) + " · " + clock.format(new java.util.Date(s.start))
+                    + (s.end > 0 ? " → " + clock.format(new java.util.Date(s.end)) : " → now") + places;
+            report.cells = TripReport.cells(s, now, "", "");
+            report.bars = chart != null ? chart.km : new double[1];
+            report.names = chart != null ? chart.names : new String[]{""};
+            report.chartTitle = "Distance · km per " + (chart == null || chart.hourly ? "hour" : "day");
+            double total = HomePeriod.sumTail(report.bars, report.bars.length);
+            report.chartSum = total >= 0.05 ? km(total) + " km" : "";
+            report.heroes = TripReport.heroes(s, now);
+            report.highlights = TripReport.highlights(s, clock).toArray(new String[0]);
+            java.util.List<TripReport.Row> rows = TripReport.rows(s, clock, ReportImage.TRIP_ROWS);
+            String stamp = reportStamp();
+            Uri file = ReportShare.saveText(this, TripReport.csv(s, now), "OABL-trip-" + stamp + ".csv", "text/csv");
+            finishShare(ReportImage.renderTrip(report, rows), "Trip report", "OABL-trip-" + stamp, file);
+        });
     }
 
     private void shareScreenshot() {
@@ -2988,12 +3010,14 @@ public final class MainActivity extends Activity {
     }
 
     /** Saves the picture to Pictures/OABL and opens the share sheet. Runs off the main thread. */
-    private void finishShare(android.graphics.Bitmap bitmap, String subject, String name) {
+    private void finishShare(android.graphics.Bitmap bitmap, String subject, String name) { finishShare(bitmap, subject, name, null); }
+
+    private void finishShare(android.graphics.Bitmap bitmap, String subject, String name, android.net.Uri file) {
         android.net.Uri uri = ReportShare.save(this, bitmap, name);
         handler.post(() -> {
             if (uri == null) { toast("Could not save the image"); return; }
-            toast("Saved to Pictures/OABL/" + name + ".png");
-            try { startActivity(ReportShare.chooser(uri, subject)); } catch (RuntimeException noSharing) { /* saved; no app to share with */ }
+            toast("Saved to Pictures/OABL/" + name + ".png" + (file != null ? " and Download/OABL/" + name + ".csv" : ""));
+            try { startActivity(ReportShare.chooser(uri, file, subject)); } catch (RuntimeException noSharing) { /* saved; no app to share with */ }
         });
     }
 
